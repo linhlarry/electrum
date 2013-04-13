@@ -254,8 +254,7 @@ def text_dialog(parent, title, label, ok_label):
 
 
 
-default_column_widths = { "history":[40,140,350,140], "contacts":[350,330], 
-	"receive":[[370],[370,200,130]] }
+default_column_widths = { "history":[40,140,350,140], "contacts":[350,330], "receive":[[370], [370,200,130]] }
 
 class ElectrumWindow(QMainWindow):
 
@@ -745,6 +744,8 @@ class ElectrumWindow(QMainWindow):
                 palette.setColor(self.amount_e.foregroundRole(), QColor('red'))
                 self.funds_error = True
                 text = _( "Not enough funds" )
+                c, u = self.wallet.get_frozen_balance()
+                if c+u: text += ' (' + self.format_amount(c+u).strip() + self.base_unit() + ' ' +_("are frozen") + ')'
 
             self.statusBar().showMessage(text)
             self.amount_e.setPalette(palette)
@@ -867,6 +868,7 @@ class ElectrumWindow(QMainWindow):
         for e in [self.payto_e, self.message_e, self.amount_e, self.fee_e]:
             e.setText('')
             self.set_frozen(e,False)
+        self.update_status()
 
     def set_frozen(self,entry,frozen):
         if frozen:
@@ -961,6 +963,8 @@ class ElectrumWindow(QMainWindow):
         self.column_widths["contacts"] = []
         for i in range(self.contacts_list.columnCount() - 1):
             self.column_widths["contacts"].append(self.contacts_list.columnWidth(i))
+
+        self.config.set_key("column_widths", self.column_widths, True)
 
 
     def create_contacts_tab(self):
@@ -1081,12 +1085,8 @@ class ElectrumWindow(QMainWindow):
         l.clear()
         l.setColumnHidden(2, not self.expert_mode)
         l.setColumnHidden(3, not self.expert_mode)
-        if not self.expert_mode:
-            width = self.column_widths['receive'][0][0]
-            l.setColumnWidth(0, width)
-        else:
-            for i,width in enumerate(self.column_widths['receive'][self.expert_mode]):
-                l.setColumnWidth(i, width)        
+        for i,width in enumerate(self.column_widths['receive'][self.expert_mode]):
+            l.setColumnWidth(i, width)
 
         if self.current_account is None:
             account_items = self.wallet.accounts.items()
@@ -2280,7 +2280,6 @@ class ElectrumWindow(QMainWindow):
         g = self.geometry()
         self.config.set_key("winpos-qt", [g.left(),g.top(),g.width(),g.height()], True)
         self.save_column_widths()
-        self.config.set_key("column_widths", self.column_widths, True)
         self.config.set_key("console-history",self.console.history[-50:])
         event.accept()
 
