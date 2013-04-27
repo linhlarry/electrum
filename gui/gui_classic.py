@@ -16,7 +16,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
-import sys, time, datetime, re
+import sys, time, datetime, re, threading
 from i18n import _, set_language
 from electrum.util import print_error, print_msg
 import os.path, json, ast, traceback
@@ -268,7 +268,8 @@ class ElectrumWindow(QMainWindow):
         self.init_plugins()
         self.create_status_bar()
 
-        self.wallet.interface.register_callback('updated', lambda: self.emit(QtCore.SIGNAL('update_wallet')))
+        self.need_update = threading.Event()
+        self.wallet.interface.register_callback('updated', lambda: self.need_update.set())
         self.wallet.interface.register_callback('banner', lambda: self.emit(QtCore.SIGNAL('banner_signal')))
         self.wallet.interface.register_callback('disconnected', lambda: self.emit(QtCore.SIGNAL('update_status')))
         self.wallet.interface.register_callback('disconnecting', lambda: self.emit(QtCore.SIGNAL('update_status')))
@@ -303,7 +304,6 @@ class ElectrumWindow(QMainWindow):
         QShortcut(QKeySequence("Ctrl+PgUp"), self, lambda: tabs.setCurrentIndex( (tabs.currentIndex() - 1 )%tabs.count() ))
         QShortcut(QKeySequence("Ctrl+PgDown"), self, lambda: tabs.setCurrentIndex( (tabs.currentIndex() + 1 )%tabs.count() ))
         
-        self.connect(self, QtCore.SIGNAL('update_wallet'), self.update_wallet)
         self.connect(self, QtCore.SIGNAL('update_status'), self.update_status)
         self.connect(self, QtCore.SIGNAL('banner_signal'), lambda: self.console.showMessage(self.wallet.interface.banner) )
         self.history_list.setFocus(True)
@@ -406,6 +406,9 @@ class ElectrumWindow(QMainWindow):
         self.previous_payto_e=''
 
     def timer_actions(self):
+        if self.need_update.is_set():
+            self.update_wallet()
+            self.need_update.clear()
         self.run_hook('timer_actions')
     
     def format_amount(self, x, is_diff=False):
@@ -606,22 +609,22 @@ class ElectrumWindow(QMainWindow):
         self.history_list.clear()
         for item in self.wallet.get_tx_history(self.current_account):
             tx_hash, conf, is_mine, value, fee, balance, timestamp = item
-            if conf:
+            if conf > 0:
                 try:
                     time_str = datetime.datetime.fromtimestamp( timestamp).isoformat(' ')[:-3]
                 except:
                     time_str = "unknown"
-                if conf == -1:
-                    icon = None
-                if conf == 0:
-                    icon = QIcon(":icons/unconfirmed.png")
-                elif conf < 6:
-                    icon = QIcon(":icons/clock%d.png"%conf)
-                else:
-                    icon = QIcon(":icons/confirmed.png")
-            else:
+
+            if conf == -1:
+                time_str = 'unverified'
+                icon = QIcon(":icons/unconfirmed.png")
+            elif conf == 0:
                 time_str = 'pending'
                 icon = QIcon(":icons/unconfirmed.png")
+            elif conf < 6:
+                icon = QIcon(":icons/clock%d.png"%conf)
+            else:
+                icon = QIcon(":icons/confirmed.png")
 
             if value is not None:
                 v_str = self.format_amount(value, True)
@@ -2355,7 +2358,7 @@ class ElectrumGui:
             seed.decode('hex')
         except:
             try:
-                seed = mnemonic.mn_decode( seed.split(' ') )
+                seed = mnemonic.mn_decode( seed.split() )
             except:
                 QMessageBox.warning(None, _('Error'), _('I cannot decode this'), _('OK'))
                 return

@@ -64,7 +64,7 @@ def prompt_password(prompt, confirm=True):
     return password
 
 def arg_parser():
-    usage = "usage: %prog [options] command\nCommands: "+ (', '.join(known_commands))
+    usage = "%prog [options] command" 
     parser = optparse.OptionParser(prog=usage)
     parser.add_option("-g", "--gui", dest="gui", help="User interface: qt, lite, gtk or text")
     parser.add_option("-w", "--wallet", dest="wallet_path", help="wallet path (default: electrum.dat)")
@@ -89,7 +89,7 @@ if __name__ == '__main__':
     parser = arg_parser()
     options, args = parser.parse_args()
     if options.portable and options.wallet_path is None:
-        options.wallet_path = os.path.dirname(os.path.realpath(__file__)) + '/electrum.dat'
+        options.wallet_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'electrum.dat')
     set_verbosity(options.verbose)
 
     # config is an object passed to the various constructors (wallet, interface, gui)
