@@ -14,7 +14,7 @@
     pyrcc4 icons.qrc -o gui/icons_rc.py
 
 ## Run program
-    python gui_kivy.py
+    python electrum_kivy
 
 ## Clean wallet data
     rm -f ~/.electrum/*
