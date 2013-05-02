@@ -15,6 +15,11 @@ from kivy.uix.spinner import Spinner
 from kivy.uix.treeview import TreeView, TreeViewLabel
 from kivy.uix.checkbox import CheckBox
 
+# TODO: remove
+import imp
+imp.load_module('electrum', *imp.find_module('lib'))
+imp.load_module('electrum_gui', *imp.find_module('gui'))
+
 from electrum import mnemonic, util
 from electrum.interface import DEFAULT_PORTS, Interface
 from electrum.simple_config import SimpleConfig
@@ -207,6 +212,7 @@ class MyGui(object):
         vbox.add_widget(label)
 
         seed_e = TextInput()
+        #seed_e = TextInput(text=self.wallet.seed)  # For debug: auto fill
         #seed_e.setMaximumHeight(100)
         vbox.add_widget(seed_e)
 
@@ -235,7 +241,7 @@ class MyGui(object):
                 seed.decode('hex')
             except:
                 try:
-                    seed = mnemonic.mn_decode( seed.split(' ') )
+                    seed = mnemonic.mn_decode( seed.split() )
                 except:
                     return self.exit_box(content_text=_('I cannot decode this'))
     
@@ -245,6 +251,7 @@ class MyGui(object):
             if not is_restore:
                 if seed != self.wallet.seed:
                     return self.exit_box(content_text=_('Incorrect seed'))
+                self.wallet.save_seed()
                 return self.network_dialog(self.wallet)
             else:
                 try:
@@ -273,6 +280,7 @@ class MyGui(object):
         dialog.open()
 
     def network_dialog(self, wallet, parent=None):
+        # TODO: rewrite this function since the original code became class based rather than function based
         interface = wallet.interface
         if parent:
             if interface.is_connected:
@@ -285,7 +293,7 @@ class MyGui(object):
             status = _("Please choose a server.") + "\n" + _("Select 'Cancel' if you are offline.")
             server = interface.server
 
-        plist, servers_list = interface.get_servers_list()
+        servers = interface.get_servers()
 
         dialog = Dialog(title=_('Server'), size=('400dp', '600dp'))
         #d.setMinimumSize(375, 20)
@@ -313,24 +321,26 @@ class MyGui(object):
         def on_change_protocol(instance, protocol_name):
             # TODO: improve this function
             try:
-                p = protocol_names.index(protocol_name)
+                index = protocol_names.index(protocol_name)
             except ValueError:
-                p = 0
-            protocol = protocol_letters[p]
-            host = unicode(server_host.text)
-            pp = plist.get(host, DEFAULT_PORTS)
-            if protocol not in pp.keys():
-                protocol = pp.keys()[0]
-            port = pp[protocol]
+                index = 0
+            p = protocol_letters[index]
+            host = unicode(self.server_host.text())
+            pp = servers.get(host)
+            if p not in pp.keys():
+                p = pp.keys()[0]
+            port = pp[p]
             server_host.text = host
             server_port.text = port
+            #self.set_protocol(p)
+
                     
         server_protocol.bind(text=on_change_protocol)
                 
         label = _('Active Servers') if wallet.interface.servers else _('Default Servers')
         
         def change_server(host, protocol=None):
-            pp = plist.get(host, DEFAULT_PORTS)
+            pp = servers.get(host, DEFAULT_PORTS)
             if protocol:
                 port = pp.get(protocol)
                 if not port: protocol = None
@@ -348,7 +358,7 @@ class MyGui(object):
             # TODO
             #server_protocol.setCurrentIndex(protocol_letters.index(protocol))
  
-            if not plist: return
+            if not servers: return
             
             # TODO: what's this?
 #             for p in protocol_letters:
@@ -369,7 +379,7 @@ class MyGui(object):
         #servers_list_widget.setMaximumHeight(150)
         #servers_list_widget.setColumnWidth(0, 240)
         
-        for _host in servers_list.keys():
+        for _host in servers.keys():
             servers_list_widget.add_node(TreeViewLabel(text=_host))
             # TODO: review it
             #pruning_level = servers_list[_host].get('pruning','')
@@ -572,8 +582,14 @@ class MyGui(object):
             if new_password != new_password2:
                 return self.error_box(content_text=_('Passwords do not match'))
 
-            wallet.update_password(seed, password, new_password)
-            
+            # TODO: test carefully
+            try:
+                wallet.update_password(seed, password, new_password)
+            except:
+                return self.exit_box(content_text=_('Failed to update password'))
+            else:
+                self.info_box(title=_('Success'), content_text=_('Password was updated successfully'))
+
             # TODO: review
             #if parent: 
             #    icon = QIcon(":icons/lock.png") if wallet.use_encryption else QIcon(":icons/unlock.png")
@@ -581,6 +597,7 @@ class MyGui(object):
 
             dialog.close()
             #self.load_wallet()
+            # TODO: can not load the main window here. Must restart.
 
         button_cancel = Button(text=_("Cancel"), on_press=on_cancel_click)
         button_ok = Button(text=_("OK"), on_press=on_ok_click)
