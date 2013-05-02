@@ -144,6 +144,7 @@ class Wallet:
         
         # store the originally requested keypair into the imported keys table
         self.imported_keys[address] = pw_encode(sec, password )
+        self.config.set_key('imported_keys', self.imported_keys, True)
         return address
         
 
@@ -291,6 +292,13 @@ class Wallet:
         compressed = is_compressed(sec)
         return key.sign_message(message, compressed, address)
 
+    def verify_message(self, address, signature, message):
+        try:
+            EC_KEY.verify_message(address, signature, message)
+            return True
+        except BaseException as e:
+            print_error("Verification error: {0}".format(e))
+            return False
 
     def create_new_address(self, account, for_change):
         addresses = self.accounts[account][for_change]
@@ -670,7 +678,7 @@ class Wallet:
     def get_tx_history(self, account=None):
         with self.transaction_lock:
             history = self.transactions.items()
-            history.sort(key = lambda x: self.verifier.verified_tx.get(x[0]) if self.verifier.verified_tx.get(x[0]) else (1e12,0,0))
+            history.sort(key = lambda x: self.verifier.get_txpos(x[0]))
             result = []
     
             balance = 0
@@ -813,16 +821,17 @@ class Wallet:
 
     def update_password(self, seed, old_password, new_password):
         if new_password == '': new_password = None
-        self.use_encryption = (new_password != None)
+        # this will throw an exception if unicode cannot be converted
         self.seed = pw_encode( seed, new_password)
         self.config.set_key('seed', self.seed, True)
+        self.use_encryption = (new_password != None)
+        self.config.set_key('use_encryption', self.use_encryption,True)
         for k in self.imported_keys.keys():
             a = self.imported_keys[k]
             b = pw_decode(a, old_password)
             c = pw_encode(b, new_password)
             self.imported_keys[k] = c
-        self.save()
-
+        self.config.set_key('imported_keys', self.imported_keys, True)
 
 
     def freeze(self,addr):
@@ -865,14 +874,12 @@ class Wallet:
             tx[k] = str(v)
             
         s = {
-            'use_encryption': self.use_encryption,
             'use_change': self.use_change,
             'fee_per_kb': self.fee,
             'accounts': self.accounts,
             'addr_history': self.history, 
             'labels': self.labels,
             'contacts': self.addressbook,
-            'imported_keys': self.imported_keys,
             'num_zeros': self.num_zeros,
             'frozen_addresses': self.frozen_addresses,
             'prioritized_addresses': self.prioritized_addresses,

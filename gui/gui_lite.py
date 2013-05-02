@@ -474,7 +474,8 @@ class MiniWindow(QDialog):
 
     def set_quote_currency(self, currency):
         """Set and display the fiat currency country."""
-        assert currency in self.quote_currencies
+        if currency not in self.quote_currencies:
+            return
         self.quote_currencies.remove(currency)
         self.quote_currencies.insert(0, currency)
         self.refresh_balance()
@@ -787,7 +788,7 @@ class MiniActuator:
     def set_configured_currency(self, set_quote_currency):
         """Set the inital fiat currency conversion country (USD/EUR/GBP) in 
         the GUI to what it was set to in the wallet."""
-        currency = self.wallet.config.get('conversion_currency')
+        currency = self.wallet.config.get('currency')
         # currency can be none when Electrum is used for the first
         # time and no setting has been created yet.
         if currency is not None:
