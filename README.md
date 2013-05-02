@@ -20,3 +20,5 @@
 - GNU GPL v3
 - Author: thomasv@bitcointalk.org
 - Contributor: Sierra 3D Engineering Co.
+
+[![Bitdeli Badge](https://d2weczhvl823v0.cloudfront.net/sierra3d/electrum/trend.png)](https://bitdeli.com/free "Bitdeli Badge")
