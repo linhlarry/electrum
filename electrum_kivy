@@ -618,9 +618,9 @@ class MyGui(object):
         synchronizer.start()
 
         url = None  # TODO:
-        self.wallet.save()
+        #self.wallet.save()
         self.main(url)
-        self.wallet.save()
+        #self.wallet.save()
 
         verifier.stop()
         synchronizer.stop()
