@@ -249,9 +249,7 @@ def run_settings_dialog(wallet, parent):
     except:
         show_message("error")
         return
-    if wallet.fee != fee:
-        wallet.fee = fee
-        wallet.save()
+    wallet.set_fee(fee)
 
     try:
         nz = int( nz )
@@ -1262,9 +1260,7 @@ class ElectrumWindow:
 
         if result == 1:
             if is_valid(address):
-                self.wallet.addressbook.append(address)
-                if label:  self.wallet.labels[address] = label
-                self.wallet.save()
+                self.wallet.add_contact(address,label)
                 self.update_sending_tab()
             else:
                 errorDialog = gtk.MessageDialog(

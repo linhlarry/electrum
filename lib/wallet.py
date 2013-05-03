@@ -147,6 +147,11 @@ class Wallet:
         self.config.set_key('imported_keys', self.imported_keys, True)
         return address
         
+    def delete_imported_key(self, addr):
+        if addr in self.imported_keys:
+            self.imported_keys.pop(addr)
+            self.config.set_key('imported_keys', self.imported_keys, True)
+
 
     def init_seed(self, seed):
         if self.seed: raise BaseException("a seed exists")
@@ -318,7 +323,7 @@ class Wallet:
     def change_gap_limit(self, value):
         if value >= self.gap_limit:
             self.gap_limit = value
-            self.save()
+            self.config.set_key('gap_limit', self.gap_limit, True)
             self.interface.poke('synchronizer')
             return True
 
@@ -331,7 +336,8 @@ class Wallet:
                 self.accounts[key][0] = addresses
 
             self.gap_limit = value
-            self.save()
+            self.config.set_key('gap_limit', self.gap_limit, True)
+            self.config.set_key('accounts', self.accounts, True)
             return True
         else:
             return False
@@ -400,11 +406,27 @@ class Wallet:
         new = []
         for account in self.accounts.keys():
             new += self.synchronize_account(account)
+        if new:
+            self.config.set_key('accounts', self.accounts, True)
+            self.config.set_key('addr_history', self.history, True)
         return new
 
 
     def is_found(self):
         return self.history.values() != [[]] * len(self.history) 
+
+
+    def add_contact(self, address, label=None):
+        self.addressbook.append(address)
+        self.config.set_key('addressbook', self.addressbook, True)
+        if label:  
+            self.labels[address] = label
+            self.config.set_key('labels', self.labels)
+
+    def delete_contact(self, addr):
+        if addr in self.addressbook:
+            self.addressbook.remove(addr)
+            self.config.set_key('addressbook', self.addressbook, True)
 
 
     def fill_addressbook(self):
@@ -652,11 +674,17 @@ class Wallet:
 
         with self.transaction_lock:
             self.transactions[tx_hash] = tx
+            self.save_transactions()
             if self.verifier and tx_height>0: 
                 self.verifier.add(tx_hash, tx_height)
             self.update_tx_outputs(tx_hash)
 
-        self.save()
+
+    def save_transactions(self):
+        tx = {}
+        for k,v in self.transactions.items():
+            tx[k] = str(v)
+        self.config.set_key('transactions', tx, True)
 
 
     def receive_history_callback(self, addr, hist):
@@ -666,7 +694,7 @@ class Wallet:
             
         with self.lock:
             self.history[addr] = hist
-            self.save()
+            self.config.set_key('addr_history', self.history, True)
 
         if hist != ['*']:
             for tx_hash, tx_height in hist:
@@ -868,7 +896,14 @@ class Wallet:
         else:
             return False
 
+    def set_fee(self, fee):
+        if self.fee != fee:
+            self.fee = fee
+            self.config.set_key('fee_per_kb', self.fee, True)
+        
+
     def save(self):
+        print_error("Warning: wallet.save() is deprecated")
         tx = {}
         for k,v in self.transactions.items():
             tx[k] = str(v)

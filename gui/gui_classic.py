@@ -929,7 +929,6 @@ class ElectrumWindow(QMainWindow):
         self.save_column_widths()
         self.expert_mode = (i == 1)
         self.config.set_key('classic_expert_mode', self.expert_mode, True)
-        self.wallet.save()
         self.update_receive_tab()
 
 
@@ -971,10 +970,9 @@ class ElectrumWindow(QMainWindow):
 
     def delete_imported_key(self, addr):
         if self.question(_("Do you want to remove")+" %s "%addr +_("from your wallet?")):
-            self.wallet.imported_keys.pop(addr)
+            self.wallet.delete_imported_key(addr)
             self.update_receive_tab()
             self.update_history_tab()
-            self.wallet.save()
 
 
     def create_receive_menu(self, position):
@@ -1018,12 +1016,11 @@ class ElectrumWindow(QMainWindow):
 
     def delete_contact(self, x):
         if self.question(_("Do you want to remove")+" %s "%x +_("from your list of contacts?")):
-            if x in self.wallet.addressbook:
-                self.wallet.addressbook.remove(x)
-                self.set_label(x, None)
-                self.update_history_tab()
-                self.update_contacts_tab()
-                self.update_completions()
+            self.wallet.delete_contact(x)
+            self.set_label(x, None)
+            self.update_history_tab()
+            self.update_contacts_tab()
+            self.update_completions()
 
 
     def create_contact_menu(self, position):
@@ -1234,8 +1231,7 @@ class ElectrumWindow(QMainWindow):
         address = unicode(text)
         if ok:
             if is_valid(address):
-                self.wallet.addressbook.append(address)
-                self.wallet.save()
+                self.wallet.add_contact(address)
                 self.update_contacts_tab()
                 self.update_history_tab()
                 self.update_completions()
@@ -2032,9 +2028,7 @@ class ElectrumWindow(QMainWindow):
             QMessageBox.warning(self, _('Error'), _('Invalid value') +': %s'%fee, _('OK'))
             return
 
-        if self.wallet.fee != fee:
-            self.wallet.fee = fee
-            self.wallet.save()
+        self.wallet.set_fee(fee)
         
         nz = unicode(nz_e.text())
         try:
