@@ -1,8 +1,21 @@
+# TODO: remove
+import imp
+imp.load_module('electrum', *imp.find_module('lib'))
+imp.load_module('electrum_gui', *imp.find_module('gui'))
+
 import os
 import sys
 import optparse
 import platform
 import time
+import datetime
+import re
+import json
+import traceback
+import threading
+
+from pprint import pprint
+from decimal import Decimal
 
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
@@ -14,21 +27,29 @@ from kivy.uix.gridlayout import GridLayout
 from kivy.uix.spinner import Spinner
 from kivy.uix.treeview import TreeView, TreeViewLabel
 from kivy.uix.checkbox import CheckBox
+from kivy.uix.tabbedpanel import TabbedPanel, TabbedPanelItem
+from kivy.uix.floatlayout import FloatLayout
+from kivy.uix.listview import ListItemButton, ListItemLabel, CompositeListItem, \
+    ListView
+from kivy.adapters.dictadapter import DictAdapter
+from kivy.adapters.listadapter import ListAdapter
 
-# TODO: remove
-import imp
-imp.load_module('electrum', *imp.find_module('lib'))
-imp.load_module('electrum_gui', *imp.find_module('gui'))
 
 from electrum import mnemonic, util
 from electrum.interface import DEFAULT_PORTS, Interface
 from electrum.simple_config import SimpleConfig
 from electrum.wallet import Wallet, WalletSynchronizer
-from electrum.util import set_verbosity
+from electrum.util import set_verbosity, format_satoshis, print_error, print_msg
 from electrum.commands import known_commands
 from electrum.verifier import WalletVerifier
+from electrum.bitcoin import is_valid, MIN_RELAY_TX_FEE
 
 _ = lambda x: x
+
+DEBUG = True
+
+if DEBUG:
+    MIN_RELAY_TX_FEE = 0
 
 
 class Dialog(object):
@@ -67,7 +88,7 @@ class Dialog(object):
         self.layout_buttons.add_widget(widget, index)
 
 
-class MyGui(object):
+class ElectrumGui(object):
     def __init__(self, app):
         from PyQt4.QtGui import *
         from PyQt4.QtCore import *
@@ -75,7 +96,6 @@ class MyGui(object):
         self.app = app
         self.wallet = app.wallet
         self.conf = app.conf
-        self.action = None  # updated by self.restore_or_create()
 
     def _message_box(self, title, content_text, button_text=_("OK"), callback=None):
         dialog = Dialog(title, size=('400dp', '200dp'))
@@ -99,6 +119,12 @@ class MyGui(object):
 
     def exit_box(self, title=_("Error"), content_text=_("Error info"), button_text=_("OK")):
         return self._message_box(title, content_text, button_text, callback=lambda instance: self.app.stop())
+
+
+class ElectrumSetupGui(ElectrumGui):
+    def __init__(self, app):
+        super(ElectrumSetupGui, self).__init__(app)
+        self.action = None  # updated by self.restore_or_create()
 
     def restore_or_create(self):
         msg = _("Wallet file not found.") + "\n" + _("Do you want to create a new wallet, or to restore an existing one?")
@@ -142,8 +168,10 @@ class MyGui(object):
         label1 = Label(text=_("Your wallet generation seed is") + ":")
         label1.bind(size=label1.setter('text_size'))
 
-        # seed_text = TextInput(text=brainwallet, size_hint=(1, 2), multiline=True, readonly=True)  # TODO:
-        seed_text = TextInput(text=brainwallet, size_hint=(1, 2), multiline=True, readonly=False)  # For debug: allow copy-paste
+        if DEBUG:
+            seed_text = TextInput(text=brainwallet, size_hint=(1, 2), multiline=True, readonly=False)  # allow copy-paste
+        else:
+            seed_text = TextInput(text=brainwallet, size_hint=(1, 2), multiline=True, readonly=True)
 
         # seed_text.setMaximumHeight(130)
 
@@ -212,7 +240,8 @@ class MyGui(object):
         vbox.add_widget(label)
 
         seed_e = TextInput()
-        # seed_e = TextInput(text=self.wallet.seed)  # For debug: auto fill
+        if DEBUG:
+            seed_e = TextInput(text=self.wallet.seed)  # auto fill
         # seed_e.setMaximumHeight(100)
         vbox.add_widget(seed_e)
 
@@ -325,7 +354,7 @@ class MyGui(object):
             except ValueError:
                 index = 0
             p = protocol_letters[index]
-            host = unicode(self.server_host.text())
+            host = unicode(self.server_host.text)
             pp = servers.get(host)
             if p not in pp.keys():
                 p = pp.keys()[0]
@@ -394,7 +423,7 @@ class MyGui(object):
         #    for w in [server_host, server_port, server_protocol, servers_list_widget]: w.setEnabled(False)
 
         # auto cycle
-        layout_autocycle = BoxLayout(oriential='horizontal')
+        layout_autocycle = BoxLayout(orientation='horizontal')
         autocycle_cb = CheckBox(size_hint=(None, 1), width='40dp')
         autocycle_cb.active = wallet.config.get('auto_cycle', True)
         if not wallet.config.is_modifiable('auto_cycle'): autocycle_cb.active = False
@@ -440,11 +469,16 @@ class MyGui(object):
 #
 #         if not d.exec_(): return
 #
-#         server = unicode( server_host.text() ) + ':' + unicode( server_port.text() ) + ':' + (protocol_letters[server_protocol.currentIndex()])
+#         server = unicode( server_host.text ) + ':' + unicode( server_port.text ) + ':' + (protocol_letters[server_protocol.currentIndex()])
 #         if proxy_mode.currentText() != 'NONE':
-#             proxy = { u'mode':unicode(proxy_mode.currentText()).lower(), u'host':unicode(proxy_host.text()), u'port':unicode(proxy_port.text()) }
+#             proxy = { u'mode':unicode(proxy_mode.currenttext).lower(), u'host':unicode(proxy_host.text), u'port':unicode(proxy_port.text) }
 #         else:
 #             proxy = None
+
+        self.host = server_host
+        self.port = server_port
+        print server_host
+        print server_port
 
         def on_cancel_click(instance):
             dialog.close()
@@ -629,9 +663,8 @@ class MyGui(object):
         # we use daemon threads, their termination is enforced.
         # this sleep command gives them time to terminate cleanly.
         time.sleep(0.1)
-        sys.exit(0)
 
-    def main(self, url):  # TODO:
+    def main_qt(self, url):  # TODO:
         from gui.gui_classic import ElectrumWindow, Timer
         s = Timer()
         s.start()
@@ -643,12 +676,327 @@ class MyGui(object):
         w.show()
         self.qt_app.exec_()
 
+    def main(self, url):  # TODO:
+        main_gui = ElectrumMainGui(self.app)
+        main_gui.show()
 
-class MyApp(App):
+
+class MyListItemLabel(ListItemLabel):
+    color = [0, 255, 0, 1]
+    # text_size = (100, None)
+    size_x = '10dp'
+
+
+class ElectrumMainGui(ElectrumGui):
+    def __init__(self, app):
+        super(ElectrumMainGui, self).__init__(app)
+        self.current_account = app.conf.get("current_account", None)
+
+        self.init_plugins()
+        self.create_status_bar()
+
+        self.need_update = threading.Event()
+
+        # TODO:
+
+        self.expert_mode = app.conf.get('classic_expert_mode', False)
+        self.decimal_point = app.conf.get('decimal_point', 8)
+
+        #### set_language(self.conf.get('language'))
+
+        self.funds_error = False
+        #### self.completions = QStringListModel()
+
+        #### self.exchanger = exchange_rate.Exchanger(self)
+        #### self.connect(self, SIGNAL("refresh_balance()"), self.update_wallet)
+
+        # set initial message
+        #### self.console.showMessage(self.wallet.interface.banner)
+
+        # plugins that need to change the GUI do it here
+        self.run_hook('init_gui')
+
+
+    def show(self):
+        panel = TabbedPanel(do_default_tab=False)
+        tab_history = TabbedPanelItem(text=_('History'))
+        tab_send = TabbedPanelItem(text=_('Send'))
+        tab_receive = TabbedPanelItem(text=_('Receive'))
+        tab_contacts = TabbedPanelItem(text=_('Contacts'))
+        tab_console = TabbedPanelItem(text=_('Console'))
+        panel.add_widget(tab_history)
+        panel.add_widget(tab_send)
+        panel.add_widget(tab_receive)
+        panel.add_widget(tab_contacts)
+        panel.add_widget(tab_console)
+        self.add_tab_history(tab_history)
+        self.add_tab_send(tab_send)
+
+        app = self.app
+        app.root.add_widget(panel)
+
+        title = 'Electrum ' + self.wallet.electrum_version + '  -  ' + self.conf.path
+        if not self.wallet.seed: title += ' [%s]' % (_('seedless'))
+
+        app.title = title  # TODO: why not update?
+
+        # [(u'26f5c788384cd5bf4b324d1bc89d64dc74c2fb84de96376ce555e9951ad29d0e',
+        #   2533,
+        #   False,
+        #   1000000,
+        #   25599980000,
+        #   1000000,
+        #   1366219927),
+        #  (u'a53001c733c7e2fd29daadcb3f2e3cb3a5d48721f139fdcd8a4f10f929a87c5d',
+        #   855,
+        #   False,
+        #   111111110,
+        #   711970423,
+        #   112111110,
+        #   1367129298)]
+
+        # TODO: add shortcuts
+
+    def format_amount(self, x, is_diff=False):
+        return format_satoshis(x, is_diff, self.wallet.num_zeros, self.decimal_point)
+
+    def add_tab_history(self, tab):
+        # TODO: rewrite parse function
+        def parse(item):
+            # tx_hash, conf, is_mine, value, fee, balance, timestamp
+            tx_hash, conf, is_mine, value, fee, balance, timestamp = item
+            if conf > 0:
+                try:
+                    time_str = datetime.datetime.fromtimestamp(timestamp).isoformat(' ')[:-3]
+                except:
+                    time_str = "unknown"
+
+            if conf == -1:
+                time_str = 'unverified'
+                # icon = QIcon(":icons/unconfirmed.png")
+            elif conf == 0:
+                time_str = 'pending'
+                # icon = QIcon(":icons/unconfirmed.png")
+            elif conf < 6:
+                # icon = QIcon(":icons/clock%d.png"%conf)
+                pass
+            else:
+                # icon = QIcon(":icons/confirmed.png")
+                pass
+
+            if value is not None:
+                v_str = self.format_amount(value, True)
+            else:
+                v_str = '--'
+
+            balance_str = self.format_amount(balance)
+
+            if tx_hash:
+                label, is_default_label = self.wallet.get_label(tx_hash)
+            else:
+                label = _('Pruned transaction outputs')
+                is_default_label = False
+
+            return '', time_str, label, v_str, balance_str
+
+            # item = QTreeWidgetItem( [ '', time_str, label, v_str, balance_str] )
+            # item.setFont(2, QFont(MONOSPACE_FONT))
+            # item.setFont(3, QFont(MONOSPACE_FONT))
+            # item.setFont(4, QFont(MONOSPACE_FONT))
+            # if value < 0:
+            #    item.setForeground(3, QBrush(QColor("#BC1E1E")))
+            # if tx_hash:
+            #    item.setData(0, Qt.UserRole, tx_hash)
+            #    item.setToolTip(0, "%d %s\nTxId:%s" % (conf, _('Confirmations'), tx_hash) )
+            # if is_default_label:
+            #    item.setForeground(2, QBrush(QColor('grey')))
+
+            # item.setIcon(0, icon)
+            # self.history_list.insertTopLevelItem(0,item)
+
+        args_converter = \
+            lambda row_index, item: \
+                {'size_hint_y': None,
+                 'height': 25,
+                 'cls_dicts': [{'cls': ListItemButton, 'kwargs': {'text': unicode(parse(item)[0])}},
+                               {'cls': ListItemButton, 'kwargs': {'text': unicode(parse(item)[1])}},
+                               {'cls': ListItemButton, 'kwargs': {'text': unicode(parse(item)[2])}},
+                               {'cls': ListItemButton, 'kwargs': {'text': unicode(parse(item)[3])}},
+                               {'cls': ListItemButton, 'kwargs': {'text': unicode(parse(item)[4])}},
+                               ]
+                 }
+
+        data = reversed(self.wallet.get_tx_history(self.current_account))
+
+        list_adapter = ListAdapter(data=data,
+                                   args_converter=args_converter,
+                                   selection_mode='single',
+                                   allow_empty_selection=False,
+                                   cls=CompositeListItem)
+
+        # Use the adapter in our ListView:
+        list_view = ListView(adapter=list_adapter)
+        tab.add_widget(list_view)
+        # list_adapter.data = []
+
+    def add_tab_send(self, tab):
+        def add_row(label, input, help):
+            hbox = BoxLayout(orientation='horizontal', size_hint_y=None, height='40dp')
+            hbox.add_widget(Label(text=label))
+            hbox.add_widget(input)
+            hbox.add_widget(Button(text="?", size_hint_x=None, width='40dp',
+                                   on_press=lambda instance: self.help_box(content_text=help)))
+            vbox.add_widget(hbox)
+
+        vbox = BoxLayout(orientation='vertical', size_hint=(1, 0.5))
+
+        self.payto_e = TextInput(multiline=False)
+        if DEBUG: self.payto_e.text = '13iB6JbHqJ9efgHTbDcRqewUZeCxywvUxN'
+        add_row(_('Pay to'), self.payto_e, _('Recipient of the funds.') + '\n\n' + _('You may enter a Bitcoin address, a label from your list of contacts (a list of completions will be proposed), or an alias (email-like address that forwards to a Bitcoin address)'))
+
+        self.message_e = TextInput(multiline=False)
+        add_row(_('Description'), self.message_e, _('Description of the transaction (not mandatory).') + '\n\n' + _('The description is not sent to the recipient of the funds. It is stored in your wallet file, and displayed in the \'History\' tab.'))
+
+        self.amount_e = TextInput(multiline=False)
+        if DEBUG: self.amount_e.text = '0.000001'
+        add_row(_('Amount'), self.amount_e, _('Amount to be sent.') + '\n\n' \
+                    + _('The amount will be displayed in red if you do not have enough funds in your wallet. Note that if you have frozen some of your addresses, the available funds will be lower than your total balance.') \
+                    + '\n\n' + _('Keyboard shortcut: type "!" to send all your coins.'))
+
+        self.fee_e = TextInput(multiline=False)
+        if DEBUG: self.fee_e.text = '0'
+        add_row(_('Fee'), self.fee_e, _('Bitcoin transactions are in general not free. A transaction fee is paid by the sender of the funds.') + '\n\n'\
+                    + _('The amount of fee can be decided freely by the sender. However, transactions with low fees take more time to be processed.') + '\n\n'\
+                    + _('A suggested fee is automatically added to this field. You may override it. The suggested fee increases with the size of the transaction.'))
+
+        hbox = BoxLayout(orientation='horizontal', size_hint_y=None, height='40dp')
+        b = ''
+        if self.wallet.seed:
+            b = Button(text=_("Send"), on_press=self.do_send)
+        else:
+            b = Button(text=_("Create unsigned transaction"), on_press=self.do_send)
+        hbox.add_widget(b)
+
+        b = Button(text=_("Clear"), on_press=self.do_clear)
+        hbox.add_widget(b)
+
+        vbox.add_widget(hbox)
+        tab.add_widget(vbox)
+
+        # TODO: shortcut Up Down
+
+    def do_send(self, instance):
+        password = None  # NOTE: always None from original code
+
+        label = unicode(self.message_e.text)
+        r = unicode(self.payto_e.text).strip()
+
+        # label or alias, with address in brackets
+        m = re.match('(.*?)\s*\<([1-9A-HJ-NP-Za-km-z]{26,})\>', r)
+        to_address = m.group(2) if m else r
+
+        if not is_valid(to_address):
+            return self.error_box(content_text=_('Invalid Bitcoin Address') + ':\n' + to_address)
+
+        try:
+            amount = self.read_amount(unicode(self.amount_e.text))
+        except:
+            return self.error_box(content_text=_('Invalid Amount'))
+        try:
+            fee = self.read_amount(unicode(self.fee_e.text))
+        except:
+            return self.error_box(content_text=_('Invalid Fee'))
+
+        try:
+            tx = self.wallet.mktx([(to_address, amount)], password, fee, account=self.current_account)
+        except BaseException, e:
+            return self.info_box(content_text=str(e))
+
+        if tx.requires_fee(self.wallet.verifier) and fee < MIN_RELAY_TX_FEE:
+            return self.error_box(content_text=_('This transaction requires a higher fee, or it will not be propagated by the network.'))
+
+        self.run_hook('send_tx', tx)
+
+        if label:
+            self.set_label(tx.hash(), label)
+
+        if tx.is_complete:
+            h = self.wallet.send_tx(tx)
+            #### TODO: waiting_dialog(lambda: False if self.wallet.tx_event.isSet() else _("Please wait..."))
+            status, msg = self.wallet.receive_tx(h)
+            if status:
+                self.error_box(content_text=_('Payment sent.') + '\n' + msg)
+                self.do_clear()
+                #### TODO: self.update_contacts_tab()
+            else:
+                self.error_box(content_text=msg)
+        else:
+            filename = label + '.txn' if label else 'unsigned_%s.txn' % (time.mktime(time.gmtime()))
+            try:
+                #### TODO: fileName = self.getSaveFileName(_("Select a transaction filename"), filename, "*.txn")
+                with open(fileName, 'w') as f:
+                    f.write(json.dumps(tx.as_dict(), indent=4) + '\n')
+                #### TODO: QMessageBox.information(self, _('Unsigned transaction created'), _("Unsigned transaction was saved to file:") + " " + fileName, _('OK'))
+            except:
+                self.error_box(content_text=_('Could not write transaction to file'))
+
+    def do_clear(self, instance):
+        # self.payto_sig.setVisible(False)
+        for e in [self.payto_e, self.message_e, self.amount_e, self.fee_e]:
+            e.text = ''
+            # self.set_frozen(e, False)
+        # self.update_status()
+
+    def read_amount(self, x):
+        if x in['.', '']: return None
+        p = pow(10, self.decimal_point)
+        return int(p * Decimal(x))
+
+    def run_hook(self, name, *args):
+        for p in self.plugins:
+            if not p.is_enabled():
+                continue
+            try:
+                f = eval('p.' + name)
+            except:
+                continue
+            try:
+                apply(f, args)
+            except:
+                print_error("Plugin error")
+                traceback.print_exc(file=sys.stdout)
+        return
+
+    def init_plugins(self):
+        import imp, pkgutil, __builtin__
+        if __builtin__.use_local_modules:
+            fp, pathname, description = imp.find_module('plugins')
+            plugin_names = [name for a, name, b in pkgutil.iter_modules([pathname])]
+            plugin_names = filter(lambda name: os.path.exists(os.path.join(pathname, name + '.py')), plugin_names)
+            imp.load_module('electrum_plugins', fp, pathname, description)
+            plugins = map(lambda name: imp.load_source('electrum_plugins.' + name, os.path.join(pathname, name + '.py')), plugin_names)
+        else:
+            import electrum_plugins
+            plugin_names = [name for a, name, b in pkgutil.iter_modules(electrum_plugins.__path__)]
+            plugins = [ __import__('electrum_plugins.' + name, fromlist=['electrum_plugins']) for name in plugin_names]
+
+        self.plugins = []
+        for p in plugins:
+            try:
+                self.plugins.append(p.Plugin(self))
+            except:
+                print_msg("Error:cannot initialize plugin", p)
+                traceback.print_exc(file=sys.stdout)
+
+    def create_status_bar(self):
+        return
+
+
+class ElectrumApp(App):
     title = _('My Electrum App')
 
     def __init__(self, wallet, conf, *args, **kwargs):
-        super(MyApp, self).__init__(*args, **kwargs)
+        super(ElectrumApp, self).__init__(*args, **kwargs)
         self.wallet = wallet
         self.conf = conf  # conflicting name 'config'
 
@@ -656,7 +1004,7 @@ class MyApp(App):
         return BoxLayout()
 
     def on_start(self):
-        gui = MyGui(app=self)
+        gui = ElectrumSetupGui(app=self)
         if not gui.conf.wallet_file_exists:
             gui.restore_or_create()
             # gui.show_seed('12345678', False)
@@ -718,5 +1066,5 @@ if __name__ == "__main__":
     interface = Interface(el_conf, True)
     el_wallet.interface = interface
 
-    app = MyApp(el_wallet, el_conf)
+    app = ElectrumApp(el_wallet, el_conf)
     app.run()
