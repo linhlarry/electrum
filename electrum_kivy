@@ -88,6 +88,26 @@ class Dialog(object):
         self.layout_buttons.add_widget(widget, index)
 
 
+class StatusBar(object):
+    def __init__(self, size_hint=(1, None), size=('400dp', '40dp')):
+        layout_text = BoxLayout(orientation='horizontal', size_hint=(1, None))
+        layout_buttons = BoxLayout(orientation='horizontal', size_hint=(1, None))
+
+        layout = BoxLayout(orientation='vertical')
+        layout.add_widget(layout_text)
+        layout.add_widget(layout_buttons)
+
+        self.layout = layout
+        self.layout_text = layout_text
+        self.layout_buttons = layout_buttons
+
+    def add_text(self, widget, index=0):
+        self.layout_text.add_widget(widget, index)
+
+    def add_button(self, widget, index=0):
+        self.layout_buttons.add_widget(widget, index)
+
+
 class ElectrumGui(object):
     def __init__(self, app):
         from PyQt4.QtGui import *
@@ -120,43 +140,82 @@ class ElectrumGui(object):
     def exit_box(self, title=_("Error"), content_text=_("Error info"), button_text=_("OK")):
         return self._message_box(title, content_text, button_text, callback=lambda instance: self.app.stop())
 
+    def password_dialog(self, instance=None):
+        """Can be called directly or from callback"""
+        wallet = self.wallet
 
-class ElectrumSetupGui(ElectrumGui):
-    def __init__(self, app):
-        super(ElectrumSetupGui, self).__init__(app)
-        self.action = None  # updated by self.restore_or_create()
+        if not wallet.seed:
+            return self.exit_box(content_text=_('No seed'))
 
-    def restore_or_create(self):
-        msg = _("Wallet file not found.") + "\n" + _("Do you want to create a new wallet, or to restore an existing one?")
-        dialog = Dialog(title=_('Message'))
+        dialog = Dialog(title=_('Password'))
 
-        label = Label(text=msg, valign='middle')
-        label.bind(size=label.setter('text_size'))
+        pw = TextInput(password=True)
+        new_pw = TextInput(password=True)
+        conf_pw = TextInput(password=True)
 
-        def on_create_click(instance):
-            self.action = 'create'
-            dialog.close()
-            self.wallet.init_seed(None)
-            self.show_seed(self.wallet.seed, self.wallet.imported_keys)
+        if instance:
+            msg = (_('Your wallet is encrypted. Use this dialog to change your password.') + '\n'\
+                   + _('To disable wallet encryption, enter an empty new password.')) \
+                   if wallet.use_encryption else _('Your wallet keys are not encrypted')
+        else:
+            msg = _("Please choose a password to encrypt your wallet keys.") + '\n'\
+                  + _("Leave these fields empty if you want to disable encryption.")
+        dialog.add_content(Label(text=msg))
 
-        def on_restore_click(instance):
-            self.action = 'restore'
-            dialog.close()
-            self.seed_dialog(True)
+        grid = GridLayout(cols=2)
+        # grid.setSpacing(8)
+
+        if wallet.use_encryption:
+            grid.add_widget(Label(text=_('Password')))
+            grid.add_widget(pw)
+
+        grid.add_widget(Label(text=_('New Password')))
+        grid.add_widget(new_pw)
+
+        grid.add_widget(Label(text=_('Confirm Password')))
+        grid.add_widget(conf_pw)
+
+        dialog.add_content(grid)
 
         def on_cancel_click(instance):
-            self.action = 'cancel'
             dialog.close()
-            self.app.stop()
+            # self.load_wallet()
 
-        button_create = Button(text=_('Create'), on_press=on_create_click)
-        button_restore = Button(text=_('Restore'), on_press=on_restore_click)
-        button_cancel = Button(text=_('Cancel'), on_press=on_cancel_click)
+        def on_ok_click(instance):
+            password = unicode(pw.text) if wallet.use_encryption else None
+            new_password = unicode(new_pw.text)
+            new_password2 = unicode(conf_pw.text)
 
-        dialog.add_content(label)
-        dialog.add_button(button_create)
-        dialog.add_button(button_restore)
+            try:
+                seed = wallet.decode_seed(password)
+            except:
+                return self.error_box(content_text=_('Incorrect Password'))
+
+            if new_password != new_password2:
+                return self.error_box(content_text=_('Passwords do not match'))
+
+            # TODO: test carefully
+            try:
+                wallet.update_password(seed, password, new_password)
+            except:
+                return self.exit_box(content_text=_('Failed to update password'))
+            else:
+                self.info_box(title=_('Success'), content_text=_('Password was updated successfully'))
+
+            # TODO: review
+            # if parent:
+            #    icon = QIcon(":icons/lock.png") if wallet.use_encryption else QIcon(":icons/unlock.png")
+            #    parent.password_button.setIcon( icon )
+
+            dialog.close()
+            # self.load_wallet()
+            # TODO: can not load the main window here. Must restart.
+
+        button_cancel = Button(text=_("Cancel"), on_press=on_cancel_click)
+        button_ok = Button(text=_("OK"), on_press=on_ok_click)
+
         dialog.add_button(button_cancel)
+        dialog.add_button(button_ok)
 
         dialog.open()
 
@@ -211,7 +270,10 @@ class ElectrumSetupGui(ElectrumGui):
 
         def on_ok_click(instance):
             dialog.close()
-            self.verify_seed()
+            try:
+                self.verify_seed()  # just for ElectrumSetupGui
+            except AttributeError:
+                pass
 
         button_ok = Button(text=_("OK"), on_press=on_ok_click)
 
@@ -219,6 +281,46 @@ class ElectrumSetupGui(ElectrumGui):
         dialog.add_content(seed_text)
         dialog.add_content(label2)
         dialog.add_button(button_ok)
+        dialog.open()
+
+
+class ElectrumSetupGui(ElectrumGui):
+    def __init__(self, app):
+        super(ElectrumSetupGui, self).__init__(app)
+        self.action = None  # updated by self.restore_or_create()
+
+    def restore_or_create(self):
+        msg = _("Wallet file not found.") + "\n" + _("Do you want to create a new wallet, or to restore an existing one?")
+        dialog = Dialog(title=_('Message'))
+
+        label = Label(text=msg, valign='middle')
+        label.bind(size=label.setter('text_size'))
+
+        def on_create_click(instance):
+            self.action = 'create'
+            dialog.close()
+            self.wallet.init_seed(None)
+            self.show_seed(self.wallet.seed, self.wallet.imported_keys)
+
+        def on_restore_click(instance):
+            self.action = 'restore'
+            dialog.close()
+            self.seed_dialog(True)
+
+        def on_cancel_click(instance):
+            self.action = 'cancel'
+            dialog.close()
+            self.app.stop()
+
+        button_create = Button(text=_('Create'), on_press=on_create_click)
+        button_restore = Button(text=_('Restore'), on_press=on_restore_click)
+        button_cancel = Button(text=_('Cancel'), on_press=on_cancel_click)
+
+        dialog.add_content(label)
+        dialog.add_button(button_create)
+        dialog.add_button(button_restore)
+        dialog.add_button(button_cancel)
+
         dialog.open()
 
     def verify_seed(self):
@@ -495,7 +597,7 @@ class ElectrumSetupGui(ElectrumGui):
             synchronizer = WalletSynchronizer(wallet, self.conf)
             synchronizer.start()
 
-            self.password_dialog(self.wallet, None)
+            self.password_dialog(None)
 
         def on_ok_click(instance):
             dialog.close()
@@ -528,7 +630,7 @@ class ElectrumSetupGui(ElectrumGui):
 
                 if not keep_it: self.app.stop()
 
-            self.password_dialog(self.wallet, None)
+            self.password_dialog(None)
 
         button_cancel = Button(text=_("Cancel"), on_press=on_cancel_click)
         button_ok = Button(text=_("OK"), on_press=on_ok_click)
@@ -564,82 +666,6 @@ class ElectrumSetupGui(ElectrumGui):
             QMessageBox.information(None, _('Error'), _("No transactions found for this seed"), _('OK'))
 
         return True
-
-    def password_dialog(self, wallet, parent=None):
-        if not wallet.seed:
-            return self.exit_box(content_text=_('No seed'))
-
-        dialog = Dialog(title=_('Password'))
-
-        pw = TextInput(password=True)
-        new_pw = TextInput(password=True)
-        conf_pw = TextInput(password=True)
-
-        if parent:
-            msg = (_('Your wallet is encrypted. Use this dialog to change your password.') + '\n'\
-                   + _('To disable wallet encryption, enter an empty new password.')) \
-                   if wallet.use_encryption else _('Your wallet keys are not encrypted')
-        else:
-            msg = _("Please choose a password to encrypt your wallet keys.") + '\n'\
-                  + _("Leave these fields empty if you want to disable encryption.")
-        dialog.add_content(Label(text=msg))
-
-        grid = GridLayout(cols=2)
-        # grid.setSpacing(8)
-
-        if wallet.use_encryption:
-            grid.add_widget(Label(text=_('Password')))
-            grid.add_widget(pw)
-
-        grid.add_widget(Label(text=_('New Password')))
-        grid.add_widget(new_pw)
-
-        grid.add_widget(Label(text=_('Confirm Password')))
-        grid.add_widget(conf_pw)
-
-        dialog.add_content(grid)
-
-        def on_cancel_click(instance):
-            dialog.close()
-            # self.load_wallet()
-
-        def on_ok_click(instance):
-            password = unicode(pw.text) if wallet.use_encryption else None
-            new_password = unicode(new_pw.text)
-            new_password2 = unicode(conf_pw.text)
-
-            try:
-                seed = wallet.decode_seed(password)
-            except:
-                return self.error_box(content_text=_('Incorrect Password'))
-
-            if new_password != new_password2:
-                return self.error_box(content_text=_('Passwords do not match'))
-
-            # TODO: test carefully
-            try:
-                wallet.update_password(seed, password, new_password)
-            except:
-                return self.exit_box(content_text=_('Failed to update password'))
-            else:
-                self.info_box(title=_('Success'), content_text=_('Password was updated successfully'))
-
-            # TODO: review
-            # if parent:
-            #    icon = QIcon(":icons/lock.png") if wallet.use_encryption else QIcon(":icons/unlock.png")
-            #    parent.password_button.setIcon( icon )
-
-            dialog.close()
-            # self.load_wallet()
-            # TODO: can not load the main window here. Must restart.
-
-        button_cancel = Button(text=_("Cancel"), on_press=on_cancel_click)
-        button_ok = Button(text=_("OK"), on_press=on_ok_click)
-
-        dialog.add_button(button_cancel)
-        dialog.add_button(button_ok)
-
-        dialog.open()
 
     def load_wallet(self):
         interface.start(wait=False)
@@ -679,12 +705,8 @@ class ElectrumSetupGui(ElectrumGui):
     def main(self, url):  # TODO:
         main_gui = ElectrumMainGui(self.app)
         main_gui.show()
+        main_gui.update_wallet()
 
-
-class MyListItemLabel(ListItemLabel):
-    color = [0, 255, 0, 1]
-    # text_size = (100, None)
-    size_x = '10dp'
 
 
 class ElectrumMainGui(ElectrumGui):
@@ -692,7 +714,7 @@ class ElectrumMainGui(ElectrumGui):
         super(ElectrumMainGui, self).__init__(app)
         self.current_account = app.conf.get("current_account", None)
 
-        self.init_plugins()
+        # self.init_plugins()  # Kivy GUI doesn't has any plugin now
         self.create_status_bar()
 
         self.need_update = threading.Event()
@@ -757,8 +779,67 @@ class ElectrumMainGui(ElectrumGui):
 
         # TODO: add shortcuts
 
+    def update_wallet(self):
+        self.update_status()
+        # if self.wallet.up_to_date or not self.wallet.interface.is_connected:
+        #    self.update_history_tab()
+        #    self.update_receive_tab()
+        #    self.update_contacts_tab()
+        #    self.update_completions()
+
+    def update_status(self):
+        if self.wallet.interface and self.wallet.interface.is_connected:
+            if not self.wallet.up_to_date:
+                text = _("Synchronizing...")
+                # icon = QIcon(":icons/status_waiting.png")
+            else:
+                c, u = self.wallet.get_account_balance(self.current_account)
+                text = _("Balance") + ": %s " % (self.format_amount(c)) + self.base_unit()
+                if u: text += " [%s unconfirmed]" % (self.format_amount(u, True).strip())
+                text += self.create_quote_text(Decimal(c + u) / 100000000)
+                # icon = QIcon(":icons/status_connected.png")
+        else:
+            text = _("Not connected")
+            # icon = QIcon(":icons/status_disconnected.png")
+
+        self.status_text = text
+        # self.statusBar().showMessage(text)
+        # self.status_button.setIcon(icon)
+
     def format_amount(self, x, is_diff=False):
         return format_satoshis(x, is_diff, self.wallet.num_zeros, self.decimal_point)
+
+    def create_status_bar(self):
+        self.status_text = ""
+        sb = StatusBar()
+
+        # update_notification = UpdateLabel(self.config)
+        # if(update_notification.new_version):
+        #    sb.addPermanentWidget(update_notification)
+
+        # accounts = self.wallet.get_accounts()
+        # if len(accounts) > 1:
+        #    from_combo = QComboBox()
+        #    from_combo.addItems([_("All accounts")] + accounts.values())
+        #    from_combo.setCurrentIndex(0)
+        #    self.connect(from_combo, SIGNAL("activated(QString)"), self.change_account)
+        #    sb.addPermanentWidget(from_combo)
+
+        if self.wallet.seed:
+            self.password_button = Button(text=_("Password"), on_press=self.password_dialog)
+            sb.add_button(self.password_button)
+
+        # self.password_pref = Button(text=_("Preferences"), on_press=self.settings_dialog)
+        # sb.add_button(self.password_pref)
+        if self.wallet.seed:
+            self.seed_button = Button(text=_("Seed"), on_press=self.seed_dialog)
+            sb.add_button(self.seed_button)
+        # self.status_button = Button(text=_("Network"), on_press=self.run_network_dialog)
+        # sb.add_button(self.status_button)
+
+        self.run_hook('create_status_bar', (sb,))
+
+        self.app.root.add_widget(sb.layout)
 
     def add_tab_history(self, tab):
         # TODO: rewrite parse function
@@ -953,47 +1034,64 @@ class ElectrumMainGui(ElectrumGui):
         return int(p * Decimal(x))
 
     def run_hook(self, name, *args):
-        for p in self.plugins:
-            if not p.is_enabled():
-                continue
-            try:
-                f = eval('p.' + name)
-            except:
-                continue
-            try:
-                apply(f, args)
-            except:
-                print_error("Plugin error")
-                traceback.print_exc(file=sys.stdout)
+        # NOTE: It just depends on plugins which not exist in Kivy GUI now.
+        # So we can safely ignores it.
         return
 
-    def init_plugins(self):
-        import imp, pkgutil, __builtin__
-        if __builtin__.use_local_modules:
-            fp, pathname, description = imp.find_module('plugins')
-            plugin_names = [name for a, name, b in pkgutil.iter_modules([pathname])]
-            plugin_names = filter(lambda name: os.path.exists(os.path.join(pathname, name + '.py')), plugin_names)
-            imp.load_module('electrum_plugins', fp, pathname, description)
-            plugins = map(lambda name: imp.load_source('electrum_plugins.' + name, os.path.join(pathname, name + '.py')), plugin_names)
-        else:
-            import electrum_plugins
-            plugin_names = [name for a, name, b in pkgutil.iter_modules(electrum_plugins.__path__)]
-            plugins = [ __import__('electrum_plugins.' + name, fromlist=['electrum_plugins']) for name in plugin_names]
 
-        self.plugins = []
-        for p in plugins:
+
+    def password_required_dialog(self, instance=None):
+        """Can be called directly or from callback"""
+        wallet = self.wallet
+
+        dialog = Dialog(title=_('Password'))
+
+        pw = TextInput(password=True)
+
+        grid = GridLayout(cols=2)
+
+        grid.add_widget(Label(text=_('Please enter password')))
+        grid.add_widget(pw)
+
+        dialog.add_content(grid)
+
+        def on_cancel_click(instance):
+            dialog.close()
+            # self.load_wallet()
+
+        def on_ok_click(instance):
+            password = unicode(pw.text) if wallet.use_encryption else None
+
             try:
-                self.plugins.append(p.Plugin(self))
+                seed = wallet.decode_seed(password)
             except:
-                print_msg("Error:cannot initialize plugin", p)
-                traceback.print_exc(file=sys.stdout)
+                return self.error_box(content_text=_('Incorrect Password'))
 
-    def create_status_bar(self):
-        return
+            dialog.close()
+
+            self.show_seed(seed, self.wallet.imported_keys, self)
+
+
+        button_cancel = Button(text=_("Cancel"), on_press=on_cancel_click)
+        button_ok = Button(text=_("OK"), on_press=on_ok_click)
+
+        dialog.add_button(button_cancel)
+        dialog.add_button(button_ok)
+
+        dialog.open()
+
+    def seed_dialog(self, instance):
+        if not self.wallet.seed:
+            return self.error_box(content_text=_('No seed'))
+
+        if self.wallet.use_encryption:
+            return self.password_required_dialog()
+
+        return self.show_seed(self.wallet.seed, self.wallet.imported_keys)
 
 
 class ElectrumApp(App):
-    title = _('My Electrum App')
+    title = _('Electrum App')
 
     def __init__(self, wallet, conf, *args, **kwargs):
         super(ElectrumApp, self).__init__(*args, **kwargs)
@@ -1010,7 +1108,7 @@ class ElectrumApp(App):
             # gui.show_seed('12345678', False)
             # gui.verify_seed()
             # gui.network_dialog(self.wallet, None)
-            # gui.password_dialog(self.wallet)
+            # gui.password_dialog()
         else:
             gui.load_wallet()
 
