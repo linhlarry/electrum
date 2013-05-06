@@ -89,11 +89,11 @@ class Dialog(object):
 
 
 class StatusBar(object):
-    def __init__(self, size_hint=(1, None), size=('400dp', '40dp')):
-        layout_text = BoxLayout(orientation='horizontal', size_hint=(1, None))
-        layout_buttons = BoxLayout(orientation='horizontal', size_hint=(1, None))
+    def __init__(self, height='40dp', text_height='38dp', button_height='38dp'):
+        layout_text = BoxLayout(orientation='horizontal', size_hint=(1, None), height=text_height)
+        layout_buttons = BoxLayout(orientation='horizontal', size_hint=(1, None), height=button_height)
 
-        layout = BoxLayout(orientation='vertical')
+        layout = BoxLayout(orientation='vertical', size_hint=(1, None), height=height)
         layout.add_widget(layout_text)
         layout.add_widget(layout_buttons)
 
@@ -712,6 +712,10 @@ class ElectrumSetupGui(ElectrumGui):
 class ElectrumMainGui(ElectrumGui):
     def __init__(self, app):
         super(ElectrumMainGui, self).__init__(app)
+
+        self.layout = BoxLayout(orientation='vertical')
+        self.app.root.add_widget(self.layout)
+
         self.current_account = app.conf.get("current_account", None)
 
         # self.init_plugins()  # Kivy GUI doesn't has any plugin now
@@ -738,7 +742,6 @@ class ElectrumMainGui(ElectrumGui):
         # plugins that need to change the GUI do it here
         self.run_hook('init_gui')
 
-
     def show(self):
         panel = TabbedPanel(do_default_tab=False)
         tab_history = TabbedPanelItem(text=_('History'))
@@ -754,13 +757,15 @@ class ElectrumMainGui(ElectrumGui):
         self.add_tab_history(tab_history)
         self.add_tab_send(tab_send)
 
-        app = self.app
-        app.root.add_widget(panel)
+        # vbox = BoxLayout(orientation='vertical')
+        # vbox.add_widget(panel)
+
+        self.layout.add_widget(panel, 2)
 
         title = 'Electrum ' + self.wallet.electrum_version + '  -  ' + self.conf.path
         if not self.wallet.seed: title += ' [%s]' % (_('seedless'))
 
-        app.title = title  # TODO: why not update?
+        self.app.title = title  # TODO: why not update?
 
         # [(u'26f5c788384cd5bf4b324d1bc89d64dc74c2fb84de96376ce555e9951ad29d0e',
         #   2533,
@@ -839,7 +844,7 @@ class ElectrumMainGui(ElectrumGui):
 
         self.run_hook('create_status_bar', (sb,))
 
-        self.app.root.add_widget(sb.layout)
+        self.layout.add_widget(sb.layout, 1)
 
     def add_tab_history(self, tab):
         # TODO: rewrite parse function
@@ -895,16 +900,101 @@ class ElectrumMainGui(ElectrumGui):
             # item.setIcon(0, icon)
             # self.history_list.insertTopLevelItem(0,item)
 
-        args_converter = \
-            lambda row_index, item: \
-                {'size_hint_y': None,
-                 'height': 25,
-                 'cls_dicts': [{'cls': ListItemButton, 'kwargs': {'text': unicode(parse(item)[0])}},
-                               {'cls': ListItemButton, 'kwargs': {'text': unicode(parse(item)[1])}},
-                               {'cls': ListItemButton, 'kwargs': {'text': unicode(parse(item)[2])}},
-                               {'cls': ListItemButton, 'kwargs': {'text': unicode(parse(item)[3])}},
-                               {'cls': ListItemButton, 'kwargs': {'text': unicode(parse(item)[4])}},
-                               ]
+        column_width = ['%sdp' % i for i in [50, 150, 400, 100, 100]]
+
+        # For header
+        header_text = [("", _("Date"), _("Description"), _("Amount"), _("Balance"))]
+
+        args_header_converter = lambda row_index, item: \
+            {'height': '40dp',
+             'cls_dicts': [
+                           {'cls': ListItemButton,
+                            'kwargs': {'halign': 'left',
+                                       'selected_color': [1, 1, 1, 1],
+                                       'size_hint': (None, None),
+                                       'width': column_width[0],
+                                       'height': '40dp',
+                                       'text': item[0]}},
+
+                           {'cls': ListItemButton,
+                            'kwargs': {'halign': 'left',
+                                       'selected_color': [1, 1, 1, 1],
+                                       'size_hint': (None, None),
+                                       'width': column_width[1],
+                                       'height': '40dp',
+                                       'text': item[1]}},
+
+                           {'cls': ListItemButton,
+                            'kwargs': {'halign': 'left',
+                                       'selected_color': [1, 1, 1, 1],
+                                       'size_hint': (None, None),
+                                       'width': column_width[2],
+                                       'height': '40dp',
+                                       'text': item[2]}},
+
+                           {'cls': ListItemButton,
+                            'kwargs': {'halign': 'left',
+                                       'selected_color': [1, 1, 1, 1],
+                                       'size_hint': (None, None),
+                                       'width': column_width[3],
+                                       'height': '40dp',
+                                       'text': item[3]}},
+
+                           {'cls': ListItemButton,
+                            'kwargs': {'halign': 'left',
+                                       'selected_color': [1, 1, 1, 1],
+                                       'size_hint': (None, None),
+                                       'width': column_width[4],
+                                       'height': '40dp',
+                                       'text': item[4]}},
+                           ]
+                 }
+
+        list_header_adapter = ListAdapter(data=header_text,
+                                   args_converter=args_header_converter,
+                                   selection_mode='single',
+                                   allow_empty_selection=False,
+                                   cls=CompositeListItem)
+
+        # For content of list
+        args_converter = lambda row_index, item: \
+            {'height': '30dp',
+             'cls_dicts': [
+                           {'cls': ListItemButton,
+                            'kwargs': {'halign': 'left',
+                                       'size_hint': (None, None),
+                                       'width': column_width[0],
+                                       'height': '40dp',
+                                       'text': unicode(parse(item)[0])}},
+
+                           {'cls': ListItemButton,
+                            'kwargs': {'halign': 'left',
+                                       'size_hint': (None, None),
+                                       'width': column_width[1],
+                                       'height': '40dp',
+                                       'text': unicode(parse(item)[1])}},
+
+                           {'cls': ListItemButton,
+                            'kwargs': {'halign': 'left',
+                                       'size_hint': (None, None),
+                                       'width': column_width[2],
+                                       'height': '40dp',
+                                       'text': unicode(parse(item)[2])}},
+
+                           {'cls': ListItemButton,
+                            'kwargs': {'halign': 'left',
+                                       'size_hint': (None, None),
+                                       'width': column_width[3],
+                                       'height': '40dp',
+                                       'text': unicode(parse(item)[3])}},
+
+                           {'cls': ListItemButton,
+                            'kwargs': {'halign': 'left',
+                                       'size_hint': (None, None),
+                                       'width': column_width[4],
+                                       'height': '40dp',
+                                       'text': unicode(parse(item)[4])}},
+                           ]
                  }
 
         data = reversed(self.wallet.get_tx_history(self.current_account))
@@ -915,10 +1005,20 @@ class ElectrumMainGui(ElectrumGui):
                                    allow_empty_selection=False,
                                    cls=CompositeListItem)
 
-        # Use the adapter in our ListView:
+        # Layout
+        header_box = BoxLayout(orientation='vertical', size_hint=(1, None), height='40dp')
+        list_header_view = ListView(adapter=list_header_adapter)
+        header_box.add_widget(list_header_view)
+
+        content_box = BoxLayout(orientation='vertical')
         list_view = ListView(adapter=list_adapter)
-        tab.add_widget(list_view)
-        # list_adapter.data = []
+        content_box.add_widget(list_view)
+
+        box_layout = BoxLayout(orientation='vertical', padding=['0dp', '2dp'])
+        box_layout.add_widget(header_box)
+        box_layout.add_widget(content_box)
+
+        tab.add_widget(box_layout)
 
     def add_tab_send(self, tab):
         def add_row(label, input, help):
@@ -951,7 +1051,6 @@ class ElectrumMainGui(ElectrumGui):
                     + _('A suggested fee is automatically added to this field. You may override it. The suggested fee increases with the size of the transaction.'))
 
         hbox = BoxLayout(orientation='horizontal', size_hint_y=None, height='40dp')
-        b = ''
         if self.wallet.seed:
             b = Button(text=_("Send"), on_press=self.do_send)
         else:
