@@ -35,7 +35,6 @@ from kivy.uix.listview import ListItemButton, ListItemLabel, CompositeListItem, 
 from kivy.adapters.dictadapter import DictAdapter
 from kivy.adapters.listadapter import ListAdapter
 
-
 from electrum import mnemonic, util
 from electrum.interface import DEFAULT_PORTS, Interface
 from electrum.simple_config import SimpleConfig
@@ -111,9 +110,6 @@ class StatusBar(object):
 
 class ElectrumGui(object):
     def __init__(self, app):
-        from PyQt4.QtGui import *
-        from PyQt4.QtCore import *
-        self.qt_app = QApplication(sys.argv)
         self.app = app
         self.wallet = app.wallet
         self.conf = app.conf
@@ -141,8 +137,9 @@ class ElectrumGui(object):
     def exit_box(self, title=_("Error"), content_text=_("Error info"), button_text=_("OK")):
         return self._message_box(title, content_text, button_text, callback=lambda instance: self.app.stop())
 
-    def password_dialog(self, instance=None):
-        """Can be called directly or from callback"""
+    def change_password_dialog(self, instance=None):
+        """Can be called directly (instance is None)
+        or from a callback (instance is not None)"""
         wallet = self.wallet
 
         if not wallet.seed:
@@ -598,7 +595,7 @@ class ElectrumSetupGui(ElectrumGui):
             synchronizer = WalletSynchronizer(wallet, self.conf)
             synchronizer.start()
 
-            self.password_dialog(None)
+            self.change_password_dialog()
 
         def on_ok_click(instance):
             dialog.close()
@@ -631,7 +628,7 @@ class ElectrumSetupGui(ElectrumGui):
 
                 if not keep_it: self.app.stop()
 
-            self.password_dialog(None)
+            self.change_password_dialog()
 
         button_cancel = Button(text=_("Cancel"), on_press=on_cancel_click)
         button_ok = Button(text=_("OK"), on_press=on_ok_click)
@@ -691,21 +688,10 @@ class ElectrumSetupGui(ElectrumGui):
         # this sleep command gives them time to terminate cleanly.
         time.sleep(0.1)
 
-    def main_qt(self, url):  # TODO:
-        from gui.gui_classic import ElectrumWindow, Timer
-        s = Timer()
-        s.start()
-        w = ElectrumWindow(self.wallet, self.conf)
-        if url: w.set_url(url)
-        w.app = self.app
-        w.connect_slots(s)
-        w.update_wallet()
-        w.show()
-        self.qt_app.exec_()
-
     def main(self, url):  # TODO:
         main_gui = ElectrumMainGui(self.app)
         main_gui.show()
+        main_gui.connect_slots()
         main_gui.update_wallet()
 
 
@@ -782,10 +768,9 @@ class ElectrumMainGui(ElectrumGui):
         self.app.stop()
         self.run_hook('close_main_window')
 
-    def connect_slots(self, sender):
+    def connect_slots(self):
         Clock.schedule_interval(self.timer_actions, 0.5)
         #self.previous_payto_e = ''  # For plugins only
-
 
     def timer_actions(self, interval):
         # print 'timer_actions', datetime.datetime.now()
@@ -827,11 +812,11 @@ class ElectrumMainGui(ElectrumGui):
 
     def update_wallet(self):
         self.update_status()
-        # if self.wallet.up_to_date or not self.wallet.interface.is_connected:
-        #    self.update_history_tab()
-        #    self.update_receive_tab()
-        #    self.update_contacts_tab()
-        #    self.update_completions()
+        if self.wallet.up_to_date or not self.wallet.interface.is_connected:
+            self.update_history_tab()
+            #self.update_receive_tab()
+            #self.update_contacts_tab()
+            #self.update_completions()
 
     def create_quote_text(self, btc_balance):
         quote_currency = self.config.get("currency", "None")
@@ -993,9 +978,9 @@ class ElectrumMainGui(ElectrumGui):
                            ]
                  }
 
-        data = reversed(self.wallet.get_tx_history(self.current_account))
+        history_data = reversed(self.wallet.get_tx_history(self.current_account))
 
-        list_adapter = ListAdapter(data=data,
+        self.list_adapter = ListAdapter(data=history_data,
                                    args_converter=args_converter,
                                    selection_mode='single',
                                    allow_empty_selection=False,
@@ -1007,7 +992,7 @@ class ElectrumMainGui(ElectrumGui):
         header_box.add_widget(list_header_view)
 
         content_box = BoxLayout(orientation='vertical')
-        list_view = ListView(adapter=list_adapter)
+        list_view = ListView(adapter=self.list_adapter)
         content_box.add_widget(list_view)
 
         box_layout = BoxLayout(orientation='vertical', padding=['0dp', '2dp'])
@@ -1022,6 +1007,185 @@ class ElectrumMainGui(ElectrumGui):
 
     def show_tx_details(self, tx):
         # NOTE: depend on self.create_history_menu()
+        pass
+
+    def tx_label_clicked(self, item, column):
+        # TODO: depend on self.create_history_tab() and self.create_history_menu()
+        pass
+
+    def tx_label_changed(self, item, column):
+        # NOTE: depend on self.create_history_menu()
+        pass
+
+    def edit_label(self, is_recv):
+        # TODO:
+        pass
+
+    def address_label_clicked(self, item, column, l, column_addr, column_label):
+        # TODO:
+        pass
+
+    def address_label_changed(self, item, column, l, column_addr, column_label):
+        # TODO:
+        pass
+
+    def current_item_changed(self, item):
+        self.run_hook('current_item_changed', item)
+
+    def update_history_tab(self):
+        self.list_adapter.data = reversed(self.wallet.get_tx_history(self.current_account))
+
+    def create_send_tab(self):
+        def add_row(label, input, help):
+            hbox = BoxLayout(orientation='horizontal', size_hint_y=None, height='40dp')
+            hbox.add_widget(Label(text=label))
+            hbox.add_widget(input)
+            hbox.add_widget(Button(text="?", size_hint_x=None, width='40dp',
+                                   on_press=lambda instance: self.help_box(content_text=help)))
+            vbox.add_widget(hbox)
+
+        vbox = BoxLayout(orientation='vertical', size_hint=(1, 0.5))
+
+        self.payto_e = TextInput(multiline=False)
+        if DEBUG: self.payto_e.text = '13iB6JbHqJ9efgHTbDcRqewUZeCxywvUxN'
+        add_row(_('Pay to'), self.payto_e, _('Recipient of the funds.') + '\n\n' + _('You may enter a Bitcoin address, a label from your list of contacts (a list of completions will be proposed), or an alias (email-like address that forwards to a Bitcoin address)'))
+
+        self.message_e = TextInput(multiline=False)
+        add_row(_('Description'), self.message_e, _('Description of the transaction (not mandatory).') + '\n\n' + _('The description is not sent to the recipient of the funds. It is stored in your wallet file, and displayed in the \'History\' tab.'))
+
+        self.amount_e = TextInput(multiline=False)
+        if DEBUG: self.amount_e.text = '0.000001'
+        add_row(_('Amount'), self.amount_e, _('Amount to be sent.') + '\n\n' \
+                    + _('The amount will be displayed in red if you do not have enough funds in your wallet. Note that if you have frozen some of your addresses, the available funds will be lower than your total balance.') \
+                    + '\n\n' + _('Keyboard shortcut: type "!" to send all your coins.'))
+
+        self.fee_e = TextInput(multiline=False)
+        if DEBUG: self.fee_e.text = '0'
+        add_row(_('Fee'), self.fee_e, _('Bitcoin transactions are in general not free. A transaction fee is paid by the sender of the funds.') + '\n\n'\
+                    + _('The amount of fee can be decided freely by the sender. However, transactions with low fees take more time to be processed.') + '\n\n'\
+                    + _('A suggested fee is automatically added to this field. You may override it. The suggested fee increases with the size of the transaction.'))
+
+        hbox = BoxLayout(orientation='horizontal', size_hint_y=None, height='40dp')
+        if self.wallet.seed:
+            b = Button(text=_("Send"), on_press=self.do_send)
+        else:
+            b = Button(text=_("Create unsigned transaction"), on_press=self.do_send)
+        hbox.add_widget(b)
+
+        b = Button(text=_("Clear"), on_press=self.do_clear)
+        hbox.add_widget(b)
+
+        vbox.add_widget(hbox)
+        return vbox
+
+        # TODO: shortcut Up Down
+
+    def update_completions(self):
+        l = []
+        for addr, label in self.wallet.labels.items():
+            if addr in self.wallet.addressbook:
+                l.append(label + '  <' + addr + '>')
+
+        self.run_hook('update_completions', l)
+        self.completions.setStringList(l)
+
+    def protected(func):
+        return lambda s, *args: s.do_protect(func, args)
+
+    def do_send(self, instance):
+        password = None  # NOTE: always None from original code
+
+        label = unicode(self.message_e.text)
+        r = unicode(self.payto_e.text).strip()
+
+        # label or alias, with address in brackets
+        m = re.match('(.*?)\s*\<([1-9A-HJ-NP-Za-km-z]{26,})\>', r)
+        to_address = m.group(2) if m else r
+
+        if not is_valid(to_address):
+            return self.error_box(content_text=_('Invalid Bitcoin Address') + ':\n' + to_address)
+
+        try:
+            amount = self.read_amount(unicode(self.amount_e.text))
+        except:
+            return self.error_box(content_text=_('Invalid Amount'))
+        try:
+            fee = self.read_amount(unicode(self.fee_e.text))
+        except:
+            return self.error_box(content_text=_('Invalid Fee'))
+
+        try:
+            tx = self.wallet.mktx([(to_address, amount)], password, fee, account=self.current_account)
+        except BaseException, e:
+            return self.info_box(content_text=str(e))
+
+        if tx.requires_fee(self.wallet.verifier) and fee < MIN_RELAY_TX_FEE:
+            return self.error_box(content_text=_('This transaction requires a higher fee, or it will not be propagated by the network.'))
+
+        self.run_hook('send_tx', tx)
+
+        if label:
+            self.set_label(tx.hash(), label)
+
+        if tx.is_complete:
+            h = self.wallet.send_tx(tx)
+            #### TODO: waiting_dialog(lambda: False if self.wallet.tx_event.isSet() else _("Please wait..."))
+            status, msg = self.wallet.receive_tx(h)
+            if status:
+                self.error_box(content_text=_('Payment sent.') + '\n' + msg)
+                self.do_clear()
+                #### TODO: self.update_contacts_tab()
+            else:
+                self.error_box(content_text=msg)
+        else:
+            filename = label + '.txn' if label else 'unsigned_%s.txn' % (time.mktime(time.gmtime()))
+            try:
+                #### TODO: fileName = self.getSaveFileName(_("Select a transaction filename"), filename, "*.txn")
+                with open(fileName, 'w') as f:
+                    f.write(json.dumps(tx.as_dict(), indent=4) + '\n')
+                #### TODO: QMessageBox.information(self, _('Unsigned transaction created'), _("Unsigned transaction was saved to file:") + " " + fileName, _('OK'))
+            except:
+                self.error_box(content_text=_('Could not write transaction to file'))
+
+    def set_url(self, url):
+        # TODO:
+        pass
+
+    def do_clear(self, instance):
+        # self.payto_sig.setVisible(False)
+        for e in [self.payto_e, self.message_e, self.amount_e, self.fee_e]:
+            e.text = ''
+            # self.set_frozen(e, False)
+        # self.update_status()
+
+    def set_frozen(self, entry, frozen):
+        # NOTE: not sure the Kivy has equivalent feature
+        pass
+
+    def toggle_freeze(self, addr):
+        # TODO
+        pass
+
+    def toggle_priority(self, addr):
+        # TODO
+        pass
+
+    def do_protect(self, func, args):
+        if self.wallet.use_encryption:
+            password = self.password_dialog()
+            if not password:
+                return
+        else:
+            password = None
+
+        if args != (False,):
+            args = (self,) + args + (password,)
+        else:
+            args = (self, password)
+        apply(func, args)
+
+    def create_list_tab(self, headers):
+        # NOTE: don't need this generic function in Kivy GUI
         pass
 
     # NEW
@@ -1087,7 +1251,7 @@ class ElectrumMainGui(ElectrumGui):
         #    sb.addPermanentWidget(from_combo)
 
         if self.wallet.seed:
-            self.password_button = Button(text=_("Password"), on_press=self.password_dialog)
+            self.password_button = Button(text=_("Password"), on_press=self.change_password_dialog)
             sb.add_button(self.password_button)
 
         # self.password_pref = Button(text=_("Preferences"), on_press=self.settings_dialog)
@@ -1102,117 +1266,7 @@ class ElectrumMainGui(ElectrumGui):
 
         self.layout.add_widget(sb.layout, 1)
 
-    def create_send_tab(self):
-        def add_row(label, input, help):
-            hbox = BoxLayout(orientation='horizontal', size_hint_y=None, height='40dp')
-            hbox.add_widget(Label(text=label))
-            hbox.add_widget(input)
-            hbox.add_widget(Button(text="?", size_hint_x=None, width='40dp',
-                                   on_press=lambda instance: self.help_box(content_text=help)))
-            vbox.add_widget(hbox)
-
-        vbox = BoxLayout(orientation='vertical', size_hint=(1, 0.5))
-
-        self.payto_e = TextInput(multiline=False)
-        if DEBUG: self.payto_e.text = '13iB6JbHqJ9efgHTbDcRqewUZeCxywvUxN'
-        add_row(_('Pay to'), self.payto_e, _('Recipient of the funds.') + '\n\n' + _('You may enter a Bitcoin address, a label from your list of contacts (a list of completions will be proposed), or an alias (email-like address that forwards to a Bitcoin address)'))
-
-        self.message_e = TextInput(multiline=False)
-        add_row(_('Description'), self.message_e, _('Description of the transaction (not mandatory).') + '\n\n' + _('The description is not sent to the recipient of the funds. It is stored in your wallet file, and displayed in the \'History\' tab.'))
-
-        self.amount_e = TextInput(multiline=False)
-        if DEBUG: self.amount_e.text = '0.000001'
-        add_row(_('Amount'), self.amount_e, _('Amount to be sent.') + '\n\n' \
-                    + _('The amount will be displayed in red if you do not have enough funds in your wallet. Note that if you have frozen some of your addresses, the available funds will be lower than your total balance.') \
-                    + '\n\n' + _('Keyboard shortcut: type "!" to send all your coins.'))
-
-        self.fee_e = TextInput(multiline=False)
-        if DEBUG: self.fee_e.text = '0'
-        add_row(_('Fee'), self.fee_e, _('Bitcoin transactions are in general not free. A transaction fee is paid by the sender of the funds.') + '\n\n'\
-                    + _('The amount of fee can be decided freely by the sender. However, transactions with low fees take more time to be processed.') + '\n\n'\
-                    + _('A suggested fee is automatically added to this field. You may override it. The suggested fee increases with the size of the transaction.'))
-
-        hbox = BoxLayout(orientation='horizontal', size_hint_y=None, height='40dp')
-        if self.wallet.seed:
-            b = Button(text=_("Send"), on_press=self.do_send)
-        else:
-            b = Button(text=_("Create unsigned transaction"), on_press=self.do_send)
-        hbox.add_widget(b)
-
-        b = Button(text=_("Clear"), on_press=self.do_clear)
-        hbox.add_widget(b)
-
-        vbox.add_widget(hbox)
-        return vbox
-
-        # TODO: shortcut Up Down
-
-    def do_send(self, instance):
-        password = None  # NOTE: always None from original code
-
-        label = unicode(self.message_e.text)
-        r = unicode(self.payto_e.text).strip()
-
-        # label or alias, with address in brackets
-        m = re.match('(.*?)\s*\<([1-9A-HJ-NP-Za-km-z]{26,})\>', r)
-        to_address = m.group(2) if m else r
-
-        if not is_valid(to_address):
-            return self.error_box(content_text=_('Invalid Bitcoin Address') + ':\n' + to_address)
-
-        try:
-            amount = self.read_amount(unicode(self.amount_e.text))
-        except:
-            return self.error_box(content_text=_('Invalid Amount'))
-        try:
-            fee = self.read_amount(unicode(self.fee_e.text))
-        except:
-            return self.error_box(content_text=_('Invalid Fee'))
-
-        try:
-            tx = self.wallet.mktx([(to_address, amount)], password, fee, account=self.current_account)
-        except BaseException, e:
-            return self.info_box(content_text=str(e))
-
-        if tx.requires_fee(self.wallet.verifier) and fee < MIN_RELAY_TX_FEE:
-            return self.error_box(content_text=_('This transaction requires a higher fee, or it will not be propagated by the network.'))
-
-        self.run_hook('send_tx', tx)
-
-        if label:
-            self.set_label(tx.hash(), label)
-
-        if tx.is_complete:
-            h = self.wallet.send_tx(tx)
-            #### TODO: waiting_dialog(lambda: False if self.wallet.tx_event.isSet() else _("Please wait..."))
-            status, msg = self.wallet.receive_tx(h)
-            if status:
-                self.error_box(content_text=_('Payment sent.') + '\n' + msg)
-                self.do_clear()
-                #### TODO: self.update_contacts_tab()
-            else:
-                self.error_box(content_text=msg)
-        else:
-            filename = label + '.txn' if label else 'unsigned_%s.txn' % (time.mktime(time.gmtime()))
-            try:
-                #### TODO: fileName = self.getSaveFileName(_("Select a transaction filename"), filename, "*.txn")
-                with open(fileName, 'w') as f:
-                    f.write(json.dumps(tx.as_dict(), indent=4) + '\n')
-                #### TODO: QMessageBox.information(self, _('Unsigned transaction created'), _("Unsigned transaction was saved to file:") + " " + fileName, _('OK'))
-            except:
-                self.error_box(content_text=_('Could not write transaction to file'))
-
-    def do_clear(self, instance):
-        # self.payto_sig.setVisible(False)
-        for e in [self.payto_e, self.message_e, self.amount_e, self.fee_e]:
-            e.text = ''
-            # self.set_frozen(e, False)
-        # self.update_status()
-
-
-
-
-    def password_required_dialog(self, instance=None):
+    def password_dialog(self, instance=None):
         """Can be called directly or from callback"""
         wallet = self.wallet
 
@@ -1252,13 +1306,10 @@ class ElectrumMainGui(ElectrumGui):
 
         dialog.open()
 
+    @protected
     def seed_dialog(self, instance):
         if not self.wallet.seed:
             return self.error_box(content_text=_('No seed'))
-
-        if self.wallet.use_encryption:
-            return self.password_required_dialog()
-
         return self.show_seed(self.wallet.seed, self.wallet.imported_keys)
 
 
