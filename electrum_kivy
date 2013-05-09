@@ -93,7 +93,7 @@ class StatusBar(object):
         layout_text = BoxLayout(orientation='horizontal', size_hint=(1, None), height=text_height)
         layout_buttons = BoxLayout(orientation='horizontal', size_hint=(1, None), height=button_height)
 
-        layout = BoxLayout(orientation='vertical', size_hint=(1, None), height=height)
+        layout = BoxLayout(orientation='horizontal', size_hint=(1, None), height=height)
         layout.add_widget(layout_text)
         layout.add_widget(layout_buttons)
 
@@ -113,6 +113,7 @@ class ElectrumGui(object):
         self.app = app
         self.wallet = app.wallet
         self.conf = app.conf
+        self.action = None  # updated by self.restore_or_create()
 
     def _message_box(self, title, content_text, button_text=_("OK"), callback=None):
         dialog = Dialog(title, size=('400dp', '200dp'))
@@ -201,9 +202,9 @@ class ElectrumGui(object):
                 self.info_box(title=_('Success'), content_text=_('Password was updated successfully'))
 
             # TODO: review
-            # if parent:
+            # if instance:
             #    icon = QIcon(":icons/lock.png") if wallet.use_encryption else QIcon(":icons/unlock.png")
-            #    parent.password_button.setIcon( icon )
+            #    instance.password_button.setIcon( icon )
 
             dialog.close()
             # self.load_wallet()
@@ -268,10 +269,13 @@ class ElectrumGui(object):
 
         def on_ok_click(instance):
             dialog.close()
-            try:
-                self.verify_seed()  # just for ElectrumSetupGui
-            except AttributeError:
-                pass
+            # TODO: remove it?
+            #try:
+            #    self.verify_seed()  # just for ElectrumSetupGui
+            #except AttributeError:
+            #    pass
+            if master_instance is None:  # called from ElectrumSetupGui
+                self.verify_seed()
 
         button_ok = Button(text=_("OK"), on_press=on_ok_click)
 
@@ -281,11 +285,355 @@ class ElectrumGui(object):
         dialog.add_button(button_ok)
         dialog.open()
 
+    def network_dialog(self, instance=None):
+        # TODO: rewrite this function since the original code became class based rather than function based
+        """Can be called directly (instance is None)
+        or from a callback (instance is not None)"""
+
+        protocol_names = ['TCP', 'HTTP', 'SSL', 'HTTPS']
+        protocol_letters = 'thsg'
+
+        wallet = self.wallet
+
+        class NetworkDialog(object):
+            def __init__(self, interface, conf):
+                dialog = Dialog(title=_('Server'), size=('400dp', '600dp'))
+                # d.setMinimumSize(375, 20)
+
+                self.interface = interface
+                self.conf = conf
+                self.protocol = None
+
+                if instance is not None:
+                    if interface.is_connected:
+                        status = _("Connected to")+" %s"%(interface.host) + "\n%d "%(wallet.verifier.height)+_("blocks")
+                    else:
+                        status = _("Not connected")
+                    server = interface.server
+                else:
+                    #import random
+                    status = _("Please choose a server.") + "\n" + _("Select 'Cancel' if you are offline.")
+                    server = interface.server
+
+                dialog.add_content(Label(text=status))
+
+                self.servers = interface.get_servers()
+
+                ########## Server ##########
+                self.server_label = Label(text=_("Server") + ":")
+                self.server_host = TextInput(multiline=False)
+                self.server_port = TextInput(multiline=False)
+                # TODO: add icons/network.png
+                self.server_protocol = Spinner(
+                    text='HTTP',
+                    values=protocol_names,
+                    size_hint=(None, None),
+                    size=(100, 44),
+                    ) #pos_hint={'center_x': .5, 'center_y': .5})
+                self.server_protocol.bind(text=self.on_change_protocol)
+
+                vbox = BoxLayout(orientation='horizontal', size_hint=(1, None), height='40dp')
+                vbox.add_widget(self.server_label)
+                vbox.add_widget(self.server_protocol)
+                vbox.add_widget(self.server_host)
+                vbox.add_widget(self.server_port)
+                dialog.add_content(vbox)
+
+                ########## Server list ##########
+                column_width = ['%sdp' % i for i in [300, 75]]
+
+                # For header
+                header_text = [(_('Active Servers') if wallet.interface.servers else _('Default Servers'), _('Limit'))]
+
+                args_header_converter = lambda row_index, item: \
+                    {'height': '40dp',
+                     'cls_dicts': [
+                                   {'cls': ListItemButton,
+                                    'kwargs': {'halign': 'left',
+                                               'selected_color': [1, 1, 1, 1],
+                                               'size_hint': (None, None),
+                                               'width': column_width[0],
+                                               'height': '40dp',
+                                               'text': item[0]}},
+                                   {'cls': ListItemButton,
+                                    'kwargs': {'halign': 'left',
+                                               'selected_color': [1, 1, 1, 1],
+                                               'size_hint': (None, None),
+                                               'width': column_width[1],
+                                               'height': '40dp',
+                                               'text': item[1]}},
+                                   ]
+                         }
+
+                list_header_adapter = ListAdapter(data=header_text,
+                                           args_converter=args_header_converter,
+                                           selection_mode='single',
+                                           allow_empty_selection=False,
+                                           cls=CompositeListItem)
+
+                # For content of list
+                args_converter = lambda row_index, item: \
+                    {'size_hint': (None, 1),
+                     'height': '8dp',
+                     'cls_dicts': [
+                                   {'cls': ListItemButton,
+                                    'kwargs': {'halign': 'left',
+                                               'size_hint': (None, 1),
+                                               'width': column_width[0],
+                                               #'height': '40dp',
+                                               'text': item[0]}},
+                                   {'cls': ListItemButton,
+                                    'kwargs': {'halign': 'left',
+                                               'size_hint': (None, 1),
+                                               'width': column_width[1],
+                                               #'height': '40dp',
+                                               'text': item[1]}},
+                                   ]
+                         }
+
+                self.list_adapter = ListAdapter(data=[],
+                                           args_converter=args_converter,
+                                           selection_mode='single',
+                                           allow_empty_selection=False,
+                                           cls=CompositeListItem)
+
+                # Layout
+                header_box = BoxLayout(orientation='vertical', size_hint=(1, None), height='40dp')
+                list_header_view = ListView(adapter=list_header_adapter)
+                header_box.add_widget(list_header_view)
+
+                content_box = BoxLayout(orientation='vertical')
+                list_view = ListView(adapter=self.list_adapter)
+                content_box.add_widget(list_view)
+
+                box_layout = BoxLayout(orientation='vertical', padding=['0dp', '2dp'])
+                box_layout.add_widget(header_box)
+                box_layout.add_widget(content_box)
+
+                dialog.add_content(box_layout)
+
+                ########################
+                if server:
+                    host, port, protocol = server.split(':')
+                    self.set_protocol(protocol)
+                    self.change_server(host, protocol)
+                else:
+                    self.set_protocol('s')
+
+                ########################
+                # TODO: review it
+                #if not config.is_modifiable('server'):
+                #    for w in [self.server_host, self.server_port, self.server_protocol, self.servers_list_widget]: w.setEnabled(False)
+
+                ########################
+                # auto cycle
+                layout_autocycle = BoxLayout(orientation='horizontal')
+                autocycle_cb = CheckBox(size_hint=(None, 1), width='40dp')
+                autocycle_cb.active = wallet.config.get('auto_cycle', True)
+                if not wallet.config.is_modifiable('auto_cycle'): autocycle_cb.active = False
+                layout_autocycle.add_widget(autocycle_cb)
+                layout_autocycle.add_widget(Label(text=_('Try random servers if disconnected')))
+
+                master_instance = instance
+
+                def on_cancel_click(instance):
+                    dialog.close()
+
+                    # TODO: RuntimeError: threads can only be started once
+                    #interface.start(wait=False)
+                    #interface.send([('server.peers.subscribe', [])])
+
+                    # generate the first addresses, in case we are offline
+                    wallet.synchronize()
+
+                    verifier = WalletVerifier(interface, self.conf)
+                    verifier.start()
+                    wallet.set_verifier(verifier)
+                    synchronizer = WalletSynchronizer(wallet, self.conf)
+                    synchronizer.start()
+
+                    if master_instance is None:  # called from ElectrumSetupGui
+                        self.change_password_dialog()
+
+                def on_ok_click(instance):
+                    dialog.close()
+                    # wallet.config.set_key("proxy", proxy, True)
+                    wallet.config.set_key("server", server, True)
+                    # interface.set_server(server, proxy)
+                    wallet.config.set_key('auto_cycle', autocycle_cb.active, True)
+
+                    # TODO: RuntimeError: threads can only be started once
+                    #interface.start(wait=False)
+                    #interface.send([('server.peers.subscribe', [])])
+
+                    # generate the first addresses, in case we are offline
+                    if self.action == 'create':
+                        wallet.synchronize()
+
+                    verifier = WalletVerifier(interface, self.conf)
+                    verifier.start()
+                    wallet.set_verifier(verifier)
+                    synchronizer = WalletSynchronizer(wallet, self.conf)
+                    synchronizer.start()
+
+                    if self.action == 'restore':
+                        try:
+                            keep_it = self.restore_wallet()
+                            wallet.fill_addressbook()
+                        except:
+                            import traceback
+                            traceback.print_exc(file=sys.stdout)
+                            self.app.stop()
+
+                        if not keep_it: self.app.stop()
+
+                    if master_instance is None:  # called from ElectrumSetupGui
+                        self.change_password_dialog()
+
+
+                button_cancel = Button(text=_("Cancel"), on_press=on_cancel_click)
+                button_ok = Button(text=_("OK"), on_press=on_ok_click)
+
+                dialog.add_content(layout_autocycle)
+                dialog.add_button(button_cancel)
+                dialog.add_button(button_ok)
+                dialog.open()
+
+
+
+            # TODO: add proxy
+    #         # proxy setting
+    #         proxy_mode = QComboBox()
+    #         proxy_host = QLineEdit()
+    #         proxy_host.setFixedWidth(200)
+    #         proxy_port = QLineEdit()
+    #         proxy_port.setFixedWidth(60)
+    #         proxy_mode.addItems(['NONE', 'SOCKS4', 'SOCKS5', 'HTTP'])
+    #
+    #         def check_for_disable(index = False):
+    #             if proxy_mode.currentText() != 'NONE':
+    #                 proxy_host.setEnabled(True)
+    #                 proxy_port.setEnabled(True)
+    #             else:
+    #                 proxy_host.setEnabled(False)
+    #                 proxy_port.setEnabled(False)
+    #
+    #         check_for_disable()
+    #         proxy_mode.connect(proxy_mode, SIGNAL('currentIndexChanged(int)'), check_for_disable)
+    #
+    #         if not wallet.config.is_modifiable('proxy'):
+    #             for w in [proxy_host, proxy_port, proxy_mode]: w.setEnabled(False)
+    #
+    #         proxy_config = interface.proxy if interface.proxy else { "mode":"none", "host":"localhost", "port":"8080"}
+    #         proxy_mode.setCurrentIndex(proxy_mode.findText(str(proxy_config.get("mode").upper())))
+    #         proxy_host.setText(proxy_config.get("host"))
+    #         proxy_port.setText(proxy_config.get("port"))
+    #
+    #         grid.addWidget(QLabel(_('Proxy') + ':'), 2, 0)
+    #         grid.addWidget(proxy_mode, 2, 1)
+    #         grid.addWidget(proxy_host, 2, 2)
+    #         grid.addWidget(proxy_port, 2, 3)
+    #
+    #         # buttons
+    #         vbox.addLayout(ok_cancel_buttons(d))
+    #         d.setLayout(vbox)
+    #
+    #         if not d.exec_(): return
+    #
+    #         server = unicode( server_host.text ) + ':' + unicode( server_port.text ) + ':' + (protocol_letters[server_protocol.currentIndex()])
+    #         if proxy_mode.currentText() != 'NONE':
+    #             proxy = { u'mode':unicode(proxy_mode.currenttext).lower(), u'host':unicode(proxy_host.text), u'port':unicode(proxy_port.text) }
+    #         else:
+    #             proxy = None
+
+
+            def init_servers_list(self):
+                data = []
+                for _host, d in self.servers.items():
+                    if d.get(self.protocol):
+                        pruning_level = d.get('pruning','')
+                        data.append(( _host, pruning_level ))
+                self.list_adapter.data = data[0:8]  # TODO: don't know why list height doesn't fit all
+
+            def set_protocol(self, protocol):
+                if protocol != self.protocol:
+                    self.protocol = protocol
+                    self.init_servers_list()
+
+            def on_change_protocol(self, instance, protocol_name):
+                try:
+                    index = protocol_names.index(protocol_name)
+                except ValueError:
+                    index = 0
+                p = protocol_letters[index]
+                host = unicode(self.server_host.text)
+                pp = self.servers.get(host)
+                if p not in pp.keys():
+                    p = pp.keys()[0]
+                port = pp[p]
+                self.server_host.text = host
+                self.server_port.text = port
+                self.set_protocol(p)
+
+            def server_changed(self, x):
+                if x:
+                    self.change_server(str(x.text(0)), self.protocol)
+
+            def change_server(self, host, protocol):
+                pp = self.servers.get(host, DEFAULT_PORTS)
+                if protocol:
+                    port = pp.get(protocol)
+                    if not port: protocol = None
+
+                if not protocol:
+                    if 's' in pp.keys():
+                        protocol = 's'
+                        port = pp.get(protocol)
+                    else:
+                        protocol = pp.keys()[0]
+                        port = pp.get(protocol)
+
+                self.server_host.text = host
+                self.server_port.text = port
+                #self.server_protocol.setCurrentIndex(protocol_letters.index(protocol))
+
+                if not self.servers: return
+                # TODO: what's this?
+                #for p in protocol_letters:
+                #    i = protocol_letters.index(p)
+                #    j = self.server_protocol.model().index(i,0)
+                #    #if p not in pp.keys(): # and self.interface.is_connected:
+                #    #    self.server_protocol.model().setData(j, QVariant(0), Qt.UserRole-1)
+                #    #else:
+                #    #    self.server_protocol.model().setData(j, QVariant(33), Qt.UserRole-1)
+
+            def do_exec(self):
+                #if not self.exec_(): return
+
+                #server = ':'.join([str(self.server_host.text),
+                #                   str(self.server_port.text),
+                #                   (protocol_letters[self.server_protocol.currentIndex()]) ])
+
+                #if self.proxy_mode.currentText() != 'NONE':
+                #    proxy = { 'mode':str(self.proxy_mode.currentText()).lower(),
+                #              'host':str(self.proxy_host.text),
+                #              'port':str(self.proxy_port.text) }
+                #else:
+                #    proxy = None
+
+                #self.config.set_key("proxy", proxy, True)
+                #self.config.set_key("server", server, True)
+                #self.interface.set_server(server, proxy)
+                #self.config.set_key('auto_cycle', self.autocycle_cb.isChecked(), True)
+                return True
+
+        # TODO: add instance parameter?
+        NetworkDialog(self.wallet.interface, self.conf).do_exec()
+
 
 class ElectrumSetupGui(ElectrumGui):
     def __init__(self, app):
         super(ElectrumSetupGui, self).__init__(app)
-        self.action = None  # updated by self.restore_or_create()
 
     def restore_or_create(self):
         msg = _("Wallet file not found.") + "\n" + _("Do you want to create a new wallet, or to restore an existing one?")
@@ -381,7 +729,7 @@ class ElectrumSetupGui(ElectrumGui):
                 if seed != self.wallet.seed:
                     return self.exit_box(content_text=_('Incorrect seed'))
                 self.wallet.save_seed()
-                return self.network_dialog(self.wallet)
+                return self.network_dialog()
             else:
                 try:
                     gap = int(unicode(gap_e.text))
@@ -397,7 +745,7 @@ class ElectrumSetupGui(ElectrumGui):
                     wallet.init_seed(str(seed))
                     wallet.save_seed()
 
-                return self.network_dialog(self.wallet, None)
+                return self.network_dialog()
 
         button_cancel = Button(text=_("Cancel"), on_press=on_cancel_click)
         button_ok = Button(text=_("OK"), on_press=on_ok_click)
@@ -406,241 +754,6 @@ class ElectrumSetupGui(ElectrumGui):
         dialog.add_button(button_cancel)
         dialog.add_button(button_ok)
 
-        dialog.open()
-
-    def network_dialog(self, wallet, parent=None):
-        # TODO: rewrite this function since the original code became class based rather than function based
-        interface = wallet.interface
-        if parent:
-            if interface.is_connected:
-                status = _("Connected to") + " %s\n%d " % (interface.host, wallet.verifier.height) + _("blocks")
-            else:
-                status = _("Not connected")
-            server = interface.server
-        else:
-            # import random
-            status = _("Please choose a server.") + "\n" + _("Select 'Cancel' if you are offline.")
-            server = interface.server
-
-        servers = interface.get_servers()
-
-        dialog = Dialog(title=_('Server'), size=('400dp', '600dp'))
-        # d.setMinimumSize(375, 20)
-
-        # grid layout
-        grid = GridLayout(cols=4)
-        # grid.setSpacing(8)
-
-        # server
-        server_host = TextInput(multiline=False, size_hint=(1, 0.5))
-        server_port = TextInput(multiline=False, size_hint=(1, 0.5))
-
-        protocol_names = ['TCP', 'HTTP', 'SSL', 'HTTPS']
-        protocol_letters = 'thsg'
-
-        # TODO: add icons/network.png
-
-        server_protocol = Spinner(
-            text='HTTP',
-            values=protocol_names,
-            size_hint=(None, None),
-            size=(100, 44),
-            pos_hint={'center_x': .5, 'center_y': .5})
-
-        def on_change_protocol(instance, protocol_name):
-            # TODO: improve this function
-            try:
-                index = protocol_names.index(protocol_name)
-            except ValueError:
-                index = 0
-            p = protocol_letters[index]
-            host = unicode(self.server_host.text)
-            pp = servers.get(host)
-            if p not in pp.keys():
-                p = pp.keys()[0]
-            port = pp[p]
-            server_host.text = host
-            server_port.text = port
-            # self.set_protocol(p)
-
-
-        server_protocol.bind(text=on_change_protocol)
-
-        label = _('Active Servers') if wallet.interface.servers else _('Default Servers')
-
-        def change_server(host, protocol=None):
-            pp = servers.get(host, DEFAULT_PORTS)
-            if protocol:
-                port = pp.get(protocol)
-                if not port: protocol = None
-
-            if not protocol:
-                if 's' in pp.keys():
-                    protocol = 's'
-                    port = pp.get(protocol)
-                else:
-                    protocol = pp.keys()[0]
-                    port = pp.get(protocol)
-
-            server_host.text = host
-            server_port.text = port
-            # TODO
-            # server_protocol.setCurrentIndex(protocol_letters.index(protocol))
-
-            if not servers: return
-
-            # TODO: what's this?
-#             for p in protocol_letters:
-#                 i = protocol_letters.index(p)
-#                 j = server_protocol.model().index(i,0)
-#                 if p not in pp.keys() and interface.is_connected:
-#                     server_protocol.model().setData(j, QtCore.QVariant(0), QtCore.Qt.UserRole-1)
-#                 else:
-#                     server_protocol.model().setData(j, QtCore.QVariant(33), QtCore.Qt.UserRole-1)
-
-        if server:
-            host, port, protocol = server.split(':')
-            change_server(host, protocol)
-
-        servers_list_widget = TreeView(hide_root=True, size_hint=(1, None), height='100dp')
-        # servers_list_widget.bind(minimum_height = servers_list_widget.setter('height'))
-        # servers_list_widget.setHeaderLabels( [ label, _('Limit') ] )
-        # servers_list_widget.setMaximumHeight(150)
-        # servers_list_widget.setColumnWidth(0, 240)
-
-        for _host in servers.keys():
-            servers_list_widget.add_node(TreeViewLabel(text=_host))
-            # TODO: review it
-            # pruning_level = servers_list[_host].get('pruning','')
-            # servers_list_widget.addTopLevelItem(QTreeWidgetItem( [ _host, pruning_level ] ))
-        # servers_list_widget.setColumnHidden(1, not parent.expert_mode if parent else True)
-
-        # servers_list_widget.connect(servers_list_widget, SIGNAL('currentItemChanged(QTreeWidgetItem*,QTreeWidgetItem*)'),
-        #                            lambda x,y: change_server(unicode(x.text(0))))
-
-        # TODO: review it
-        # if not wallet.config.is_modifiable('server'):
-        #    for w in [server_host, server_port, server_protocol, servers_list_widget]: w.setEnabled(False)
-
-        # auto cycle
-        layout_autocycle = BoxLayout(orientation='horizontal')
-        autocycle_cb = CheckBox(size_hint=(None, 1), width='40dp')
-        autocycle_cb.active = wallet.config.get('auto_cycle', True)
-        if not wallet.config.is_modifiable('auto_cycle'): autocycle_cb.active = False
-        layout_autocycle.add_widget(autocycle_cb)
-        layout_autocycle.add_widget(Label(text=_('Try random servers if disconnected')))
-
-        # TODO: add proxy
-#         # proxy setting
-#         proxy_mode = QComboBox()
-#         proxy_host = QLineEdit()
-#         proxy_host.setFixedWidth(200)
-#         proxy_port = QLineEdit()
-#         proxy_port.setFixedWidth(60)
-#         proxy_mode.addItems(['NONE', 'SOCKS4', 'SOCKS5', 'HTTP'])
-#
-#         def check_for_disable(index = False):
-#             if proxy_mode.currentText() != 'NONE':
-#                 proxy_host.setEnabled(True)
-#                 proxy_port.setEnabled(True)
-#             else:
-#                 proxy_host.setEnabled(False)
-#                 proxy_port.setEnabled(False)
-#
-#         check_for_disable()
-#         proxy_mode.connect(proxy_mode, SIGNAL('currentIndexChanged(int)'), check_for_disable)
-#
-#         if not wallet.config.is_modifiable('proxy'):
-#             for w in [proxy_host, proxy_port, proxy_mode]: w.setEnabled(False)
-#
-#         proxy_config = interface.proxy if interface.proxy else { "mode":"none", "host":"localhost", "port":"8080"}
-#         proxy_mode.setCurrentIndex(proxy_mode.findText(str(proxy_config.get("mode").upper())))
-#         proxy_host.setText(proxy_config.get("host"))
-#         proxy_port.setText(proxy_config.get("port"))
-#
-#         grid.addWidget(QLabel(_('Proxy') + ':'), 2, 0)
-#         grid.addWidget(proxy_mode, 2, 1)
-#         grid.addWidget(proxy_host, 2, 2)
-#         grid.addWidget(proxy_port, 2, 3)
-#
-#         # buttons
-#         vbox.addLayout(ok_cancel_buttons(d))
-#         d.setLayout(vbox)
-#
-#         if not d.exec_(): return
-#
-#         server = unicode( server_host.text ) + ':' + unicode( server_port.text ) + ':' + (protocol_letters[server_protocol.currentIndex()])
-#         if proxy_mode.currentText() != 'NONE':
-#             proxy = { u'mode':unicode(proxy_mode.currenttext).lower(), u'host':unicode(proxy_host.text), u'port':unicode(proxy_port.text) }
-#         else:
-#             proxy = None
-
-        self.host = server_host
-        self.port = server_port
-        print server_host
-        print server_port
-
-        def on_cancel_click(instance):
-            dialog.close()
-
-            interface.start(wait=False)
-            interface.send([('server.peers.subscribe', [])])
-
-            # generate the first addresses, in case we are offline
-            wallet.synchronize()
-
-            verifier = WalletVerifier(interface, self.conf)
-            verifier.start()
-            wallet.set_verifier(verifier)
-            synchronizer = WalletSynchronizer(wallet, self.conf)
-            synchronizer.start()
-
-            self.change_password_dialog()
-
-        def on_ok_click(instance):
-            dialog.close()
-            # wallet.config.set_key("proxy", proxy, True)
-            wallet.config.set_key("server", server, True)
-            # interface.set_server(server, proxy)
-            wallet.config.set_key('auto_cycle', autocycle_cb.active, True)
-
-            interface.start(wait=False)
-            interface.send([('server.peers.subscribe', [])])
-
-            # generate the first addresses, in case we are offline
-            if self.action == 'create':
-                wallet.synchronize()
-
-            verifier = WalletVerifier(interface, self.conf)
-            verifier.start()
-            wallet.set_verifier(verifier)
-            synchronizer = WalletSynchronizer(wallet, self.conf)
-            synchronizer.start()
-
-            if self.action == 'restore':
-                try:
-                    keep_it = self.restore_wallet()
-                    wallet.fill_addressbook()
-                except:
-                    import traceback
-                    traceback.print_exc(file=sys.stdout)
-                    self.app.stop()
-
-                if not keep_it: self.app.stop()
-
-            self.change_password_dialog()
-
-        button_cancel = Button(text=_("Cancel"), on_press=on_cancel_click)
-        button_ok = Button(text=_("OK"), on_press=on_ok_click)
-
-        dialog.add_content(Label(text=status))
-        dialog.add_content(server_protocol)
-        dialog.add_content(server_host)
-        dialog.add_content(server_port)
-        # dialog.add_content(servers_list_widget)
-        dialog.add_content(layout_autocycle)
-        dialog.add_button(button_cancel)
-        dialog.add_button(button_ok)
         dialog.open()
 
     def restore_wallet(self):
@@ -680,9 +793,9 @@ class ElectrumSetupGui(ElectrumGui):
         self.main(url)
         # self.wallet.save()
 
-        verifier.stop()
-        synchronizer.stop()
-        interface.stop()
+        #verifier.stop()
+        #synchronizer.stop()
+        #interface.stop()
 
         # we use daemon threads, their termination is enforced.
         # this sleep command gives them time to terminate cleanly.
@@ -697,6 +810,9 @@ class ElectrumSetupGui(ElectrumGui):
 
 
 class ElectrumMainGui(ElectrumGui):
+    def emit(self, signal):
+        pass
+
     def __init__(self, app):
         super(ElectrumMainGui, self).__init__(app)
 
@@ -724,7 +840,8 @@ class ElectrumMainGui(ElectrumGui):
 
         #### self.column_widths = self.conf.get("column_widths", default_column_widths)  # NOTE: not used in Kivy now
 
-        #### self.exchanger = exchange_rate.Exchanger(self)
+        import electrum_gui.exchange_rate as exchange_rate
+        self.exchanger = exchange_rate.Exchanger(self)
         #### self.connect(self, SIGNAL("refresh_balance()"), self.update_wallet)
 
         # set initial message
@@ -806,8 +923,7 @@ class ElectrumMainGui(ElectrumGui):
             text = _("Not connected")
             # icon = QIcon(":icons/status_disconnected.png")
 
-        self.status_text = text
-        # self.statusBar().showMessage(text)
+        self.status_text.text = text
         # self.status_button.setIcon(icon)
 
     def update_wallet(self):
@@ -819,7 +935,7 @@ class ElectrumMainGui(ElectrumGui):
             #self.update_completions()
 
     def create_quote_text(self, btc_balance):
-        quote_currency = self.config.get("currency", "None")
+        quote_currency = self.conf.get("currency", "None")
         quote_balance = self.exchanger.exchange(btc_balance, quote_currency)
         if quote_balance is None:
             quote_text = ""
@@ -1235,8 +1351,12 @@ class ElectrumMainGui(ElectrumGui):
 
     # NEW
     def create_status_bar(self):
-        self.status_text = ""
         sb = StatusBar()
+
+        label = Label(halign='left', valign='middle', padding_x='-10dp')
+        label.bind(size=label.setter('text_size'))
+        self.status_text = label
+        sb.add_text(self.status_text)
 
         # update_notification = UpdateLabel(self.config)
         # if(update_notification.new_version):
@@ -1259,8 +1379,8 @@ class ElectrumMainGui(ElectrumGui):
         if self.wallet.seed:
             self.seed_button = Button(text=_("Seed"), on_press=self.seed_dialog)
             sb.add_button(self.seed_button)
-        # self.status_button = Button(text=_("Network"), on_press=self.run_network_dialog)
-        # sb.add_button(self.status_button)
+        self.status_button = Button(text=_("Network"), on_press=self.network_dialog)
+        sb.add_button(self.status_button)
 
         self.run_hook('create_status_bar', (sb,))
 
@@ -1330,7 +1450,7 @@ class ElectrumApp(App):
             gui.restore_or_create()
             # gui.show_seed('12345678', False)
             # gui.verify_seed()
-            # gui.network_dialog(self.wallet, None)
+            # gui.network_dialog()
             # gui.password_dialog()
         else:
             gui.load_wallet()
