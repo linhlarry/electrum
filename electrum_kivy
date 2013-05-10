@@ -397,6 +397,9 @@ class ElectrumGui(object):
                                            allow_empty_selection=False,
                                            cls=CompositeListItem)
 
+
+                self.list_adapter.bind(on_selection_change=self.server_changed)
+
                 # Layout
                 header_box = BoxLayout(orientation='vertical', size_hint=(1, None), height='40dp')
                 list_header_view = ListView(adapter=list_header_adapter)
@@ -425,8 +428,53 @@ class ElectrumGui(object):
                 #if not config.is_modifiable('server'):
                 #    for w in [self.server_host, self.server_port, self.server_protocol, self.servers_list_widget]: w.setEnabled(False)
 
+                ########## Proxy ##########
+                # proxy setting
+                proxy_label = Label(text=_("Proxy") + ":")
+                proxy_host = TextInput(multiline=False)
+                proxy_port = TextInput(multiline=False)
+                proxy_names = ['NONE', 'SOCKS4', 'SOCKS5', 'HTTP']
+                proxy_mode = Spinner(
+                    text='NONE',
+                    values=proxy_names,
+                    size_hint=(None, None),
+                    size=(100, 44),
+                    ) #pos_hint={'center_x': .5, 'center_y': .5})
+                vbox = BoxLayout(orientation='horizontal', size_hint=(1, None), height='40dp')
+                vbox.add_widget(proxy_label)
+                vbox.add_widget(proxy_mode)
+                vbox.add_widget(proxy_host)
+                vbox.add_widget(proxy_port)
+                dialog.add_content(vbox)
+
+                def check_for_disable(instance, proxy_mode_name):
+                    if proxy_mode_name != 'NONE':
+                        proxy_host.readonly = False
+                        proxy_port.readonly = False
+                    else:
+                        proxy_host.readonly = True
+                        proxy_port.readonly = True
+
+                
+                check_for_disable(None, 'NONE')
+                proxy_mode.bind(text=check_for_disable)
+
+                #if not wallet.config.is_modifiable('proxy'):
+                #    for w in [proxy_host, proxy_port, proxy_mode]: w.setEnabled(False)
+
+                proxy_config = interface.proxy if interface.proxy else { "mode":"none", "host":"localhost", "port":"8080"}
+                ####proxy_mode.setCurrentIndex(proxy_mode.findText(str(proxy_config.get("mode").upper())))
+                proxy_host.text = proxy_config.get("host")
+                proxy_port.text = proxy_config.get("port")
+
+                #server = unicode( server_host.text ) + ':' + unicode( server_port.text ) + ':' + (protocol_letters[server_protocol.currentIndex()])
+                #if proxy_mode.currentText() != 'NONE':
+                #    proxy = { u'mode':unicode(proxy_mode.currenttext).lower(), u'host':unicode(proxy_host.text), u'port':unicode(proxy_port.text) }
+                #else:
+                #    proxy = None
+
                 ########################
-                # auto cycle
+                # Auto cycle
                 layout_autocycle = BoxLayout(orientation='horizontal')
                 autocycle_cb = CheckBox(size_hint=(None, 1), width='40dp')
                 autocycle_cb.active = wallet.config.get('auto_cycle', True)
@@ -500,53 +548,6 @@ class ElectrumGui(object):
                 dialog.open()
 
 
-
-            # TODO: add proxy
-    #         # proxy setting
-    #         proxy_mode = QComboBox()
-    #         proxy_host = QLineEdit()
-    #         proxy_host.setFixedWidth(200)
-    #         proxy_port = QLineEdit()
-    #         proxy_port.setFixedWidth(60)
-    #         proxy_mode.addItems(['NONE', 'SOCKS4', 'SOCKS5', 'HTTP'])
-    #
-    #         def check_for_disable(index = False):
-    #             if proxy_mode.currentText() != 'NONE':
-    #                 proxy_host.setEnabled(True)
-    #                 proxy_port.setEnabled(True)
-    #             else:
-    #                 proxy_host.setEnabled(False)
-    #                 proxy_port.setEnabled(False)
-    #
-    #         check_for_disable()
-    #         proxy_mode.connect(proxy_mode, SIGNAL('currentIndexChanged(int)'), check_for_disable)
-    #
-    #         if not wallet.config.is_modifiable('proxy'):
-    #             for w in [proxy_host, proxy_port, proxy_mode]: w.setEnabled(False)
-    #
-    #         proxy_config = interface.proxy if interface.proxy else { "mode":"none", "host":"localhost", "port":"8080"}
-    #         proxy_mode.setCurrentIndex(proxy_mode.findText(str(proxy_config.get("mode").upper())))
-    #         proxy_host.setText(proxy_config.get("host"))
-    #         proxy_port.setText(proxy_config.get("port"))
-    #
-    #         grid.addWidget(QLabel(_('Proxy') + ':'), 2, 0)
-    #         grid.addWidget(proxy_mode, 2, 1)
-    #         grid.addWidget(proxy_host, 2, 2)
-    #         grid.addWidget(proxy_port, 2, 3)
-    #
-    #         # buttons
-    #         vbox.addLayout(ok_cancel_buttons(d))
-    #         d.setLayout(vbox)
-    #
-    #         if not d.exec_(): return
-    #
-    #         server = unicode( server_host.text ) + ':' + unicode( server_port.text ) + ':' + (protocol_letters[server_protocol.currentIndex()])
-    #         if proxy_mode.currentText() != 'NONE':
-    #             proxy = { u'mode':unicode(proxy_mode.currenttext).lower(), u'host':unicode(proxy_host.text), u'port':unicode(proxy_port.text) }
-    #         else:
-    #             proxy = None
-
-
             def init_servers_list(self):
                 data = []
                 for _host, d in self.servers.items():
@@ -575,9 +576,13 @@ class ElectrumGui(object):
                 self.server_port.text = port
                 self.set_protocol(p)
 
-            def server_changed(self, x):
-                if x:
-                    self.change_server(str(x.text(0)), self.protocol)
+            def server_changed(self, instance):
+                try:
+                    index = instance.selection[0].index
+                except (AttributeError, IndexError):
+                    return
+                item = instance.get_data_item(index)
+                self.change_server(item[0], self.protocol)
 
             def change_server(self, host, protocol):
                 pp = self.servers.get(host, DEFAULT_PORTS)
