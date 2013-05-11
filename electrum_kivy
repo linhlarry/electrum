@@ -108,6 +108,352 @@ class StatusBar(object):
         self.layout_buttons.add_widget(widget, index)
 
 
+protocol_names = ['TCP', 'HTTP', 'SSL', 'HTTPS']
+protocol_letters = 'thsg'
+proxy_names = ['NONE', 'SOCKS4', 'SOCKS5', 'HTTP']
+
+class NetworkDialog(object):
+    def __init__(self, parent, instance):
+        self.parent = parent
+        self.instance = instance
+        self.protocol = None
+
+        conf = self.parent.conf
+        wallet = self.parent.wallet
+        interface = wallet.interface
+
+        dialog = Dialog(title=_('Server'), size=('400dp', '600dp'))
+        # d.setMinimumSize(375, 20)
+
+        if instance is not None:
+            if interface.is_connected:
+                status = _("Connected to")+" %s"%(interface.host) + "\n%d "%(wallet.verifier.height)+_("blocks")
+            else:
+                status = _("Not connected")
+            server = interface.server
+        else:
+            #import random
+            status = _("Please choose a server.") + "\n" + _("Select 'Cancel' if you are offline.")
+            server = interface.server
+
+        dialog.add_content(Label(text=status))
+
+        self.servers = interface.get_servers()
+
+        ########## Server ##########
+        self.server_label = Label(text=_("Server") + ":")
+        self.server_host = TextInput(multiline=False)
+        self.server_port = TextInput(multiline=False)
+        # TODO: add icons/network.png
+        self.server_protocol = Spinner(
+            text='HTTP',
+            values=protocol_names,
+            size_hint=(None, None),
+            size=(100, 44),
+            ) #pos_hint={'center_x': .5, 'center_y': .5})
+        self.server_protocol.bind(text=self.on_change_protocol)
+
+        vbox = BoxLayout(orientation='horizontal', size_hint=(1, None), height='40dp')
+        vbox.add_widget(self.server_label)
+        vbox.add_widget(self.server_protocol)
+        vbox.add_widget(self.server_host)
+        vbox.add_widget(self.server_port)
+        dialog.add_content(vbox)
+
+        ########## Server list ##########
+        column_width = ['%sdp' % i for i in [300, 75]]
+
+        # For header
+        header_text = [(_('Active Servers') if interface.servers else _('Default Servers'), _('Limit'))]
+
+        args_header_converter = lambda row_index, item: \
+            {'height': '40dp',
+             'cls_dicts': [
+                           {'cls': ListItemButton,
+                            'kwargs': {'halign': 'left',
+                                       'selected_color': [1, 1, 1, 1],
+                                       'size_hint': (None, None),
+                                       'width': column_width[0],
+                                       'height': '40dp',
+                                       'text': item[0]}},
+                           {'cls': ListItemButton,
+                            'kwargs': {'halign': 'left',
+                                       'selected_color': [1, 1, 1, 1],
+                                       'size_hint': (None, None),
+                                       'width': column_width[1],
+                                       'height': '40dp',
+                                       'text': item[1]}},
+                           ]
+                 }
+
+        list_header_adapter = ListAdapter(data=header_text,
+                                   args_converter=args_header_converter,
+                                   selection_mode='single',
+                                   allow_empty_selection=False,
+                                   cls=CompositeListItem)
+
+        # For content of list
+        args_converter = lambda row_index, item: \
+            {'size_hint': (None, 1),
+             'height': '8dp',
+             'cls_dicts': [
+                           {'cls': ListItemButton,
+                            'kwargs': {'halign': 'left',
+                                       'size_hint': (None, 1),
+                                       'width': column_width[0],
+                                       #'height': '40dp',
+                                       'text': item[0]}},
+                           {'cls': ListItemButton,
+                            'kwargs': {'halign': 'left',
+                                       'size_hint': (None, 1),
+                                       'width': column_width[1],
+                                       #'height': '40dp',
+                                       'text': item[1]}},
+                           ]
+                 }
+
+        self.list_adapter = ListAdapter(data=[],
+                                   args_converter=args_converter,
+                                   selection_mode='single',
+                                   allow_empty_selection=False,
+                                   cls=CompositeListItem)
+
+
+        self.list_adapter.bind(on_selection_change=self.server_changed)
+
+        # Layout
+        header_box = BoxLayout(orientation='vertical', size_hint=(1, None), height='40dp')
+        list_header_view = ListView(adapter=list_header_adapter)
+        header_box.add_widget(list_header_view)
+
+        content_box = BoxLayout(orientation='vertical')
+        list_view = ListView(adapter=self.list_adapter)
+        content_box.add_widget(list_view)
+
+        box_layout = BoxLayout(orientation='vertical', padding=['0dp', '2dp'])
+        box_layout.add_widget(header_box)
+        box_layout.add_widget(content_box)
+
+        dialog.add_content(box_layout)
+
+        ########################
+        if server:
+            host, port, protocol = server.split(':')
+            self.set_protocol(protocol)
+            self.change_server(host, protocol)
+        else:
+            self.set_protocol('s')
+
+        ########################
+        # TODO: review it
+        #if not config.is_modifiable('server'):
+        #    for w in [self.server_host, self.server_port, self.server_protocol, self.servers_list_widget]: w.setEnabled(False)
+
+        ########## Proxy ##########
+        # proxy setting
+        self.proxy_label = Label(text=_("Proxy") + ":")
+        self.proxy_host = TextInput(multiline=False)
+        self.proxy_port = TextInput(multiline=False)
+        self.proxy_mode = Spinner(
+            text='NONE',
+            values=proxy_names,
+            size_hint=(None, None),
+            size=(100, 44),
+            ) #pos_hint={'center_x': .5, 'center_y': .5})
+        vbox = BoxLayout(orientation='horizontal', size_hint=(1, None), height='40dp')
+        vbox.add_widget(self.proxy_label)
+        vbox.add_widget(self.proxy_mode)
+        vbox.add_widget(self.proxy_host)
+        vbox.add_widget(self.proxy_port)
+        dialog.add_content(vbox)
+
+        def check_for_disable(instance, proxy_mode_name):
+            if proxy_mode_name != 'NONE':
+                self.proxy_host.readonly = False
+                self.proxy_port.readonly = False
+            else:
+                self.proxy_host.readonly = True
+                self.proxy_port.readonly = True
+
+
+        check_for_disable(None, 'NONE')
+        self.proxy_mode.bind(text=check_for_disable)
+
+        #if not wallet.config.is_modifiable('proxy'):
+        #    for w in [proxy_host, proxy_port, proxy_mode]: w.setEnabled(False)
+
+        proxy_config = interface.proxy if interface.proxy else { "mode":"none", "host":"localhost", "port":"8080"}
+        ####proxy_mode.setCurrentIndex(proxy_mode.findText(str(proxy_config.get("mode").upper())))
+        self.proxy_host.text = proxy_config.get("host")
+        self.proxy_port.text = proxy_config.get("port")
+
+        #server = unicode( server_host.text ) + ':' + unicode( server_port.text ) + ':' + (protocol_letters[server_protocol.currentIndex()])
+        #if proxy_mode.currentText() != 'NONE':
+        #    proxy = { u'mode':unicode(proxy_mode.currenttext).lower(), u'host':unicode(proxy_host.text), u'port':unicode(proxy_port.text) }
+        #else:
+        #    proxy = None
+
+        ########################
+        # Auto cycle
+        layout_autocycle = BoxLayout(orientation='horizontal')
+        self.autocycle_cb = CheckBox(size_hint=(None, 1), width='40dp')
+        self.autocycle_cb.active = conf.get('auto_cycle', True)
+        if not conf.is_modifiable('auto_cycle'): self.autocycle_cb.active = False
+        layout_autocycle.add_widget(self.autocycle_cb)
+        layout_autocycle.add_widget(Label(text=_('Try random servers if disconnected')))
+
+        master_instance = instance
+
+        def on_cancel_click(instance):
+            dialog.close()
+
+            # TODO: RuntimeError: threads can only be started once
+            #interface.start(wait=False)
+            #interface.send([('server.peers.subscribe', [])])
+
+            # generate the first addresses, in case we are offline
+            parent.wallet.synchronize()
+
+            verifier = WalletVerifier(interface, conf)
+            verifier.start()
+            parent.wallet.set_verifier(verifier)
+            synchronizer = WalletSynchronizer(parent.wallet, conf)
+            synchronizer.start()
+
+            if master_instance is None:  # called from ElectrumSetupGui
+                self.change_password_dialog()
+
+        def on_ok_click(instance):
+            dialog.close()
+            # wallet.config.set_key("proxy", proxy, True)
+            conf.set_key("server", server, True)
+            # interface.set_server(server, proxy)
+            conf.set_key('auto_cycle', self.autocycle_cb.active, True)
+
+            # TODO: RuntimeError: threads can only be started once
+            #interface.start(wait=False)
+            #interface.send([('server.peers.subscribe', [])])
+
+            # generate the first addresses, in case we are offline
+            if self.parent.action == 'create':
+                parent.wallet.synchronize()
+
+            verifier = WalletVerifier(interface, conf)
+            verifier.start()
+            wallet.set_verifier(verifier)
+            synchronizer = WalletSynchronizer(wallet, conf)
+            synchronizer.start()
+
+            if self.parent.action == 'restore':
+                try:
+                    keep_it = self.restore_wallet()
+                    wallet.fill_addressbook()
+                except:
+                    import traceback
+                    traceback.print_exc(file=sys.stdout)
+                    self.app.stop()
+
+                if not keep_it: self.app.stop()
+
+            if master_instance is None:  # called from ElectrumSetupGui
+                self.change_password_dialog()
+
+        button_cancel = Button(text=_("Cancel"), on_press=on_cancel_click)
+        button_ok = Button(text=_("OK"), on_press=on_ok_click)
+
+        dialog.add_content(layout_autocycle)
+        dialog.add_button(button_cancel)
+        dialog.add_button(button_ok)
+        dialog.open()
+
+    def init_servers_list(self):
+        data = []
+        for _host, d in self.servers.items():
+            if d.get(self.protocol):
+                pruning_level = d.get('pruning','')
+                data.append(( _host, pruning_level ))
+        self.list_adapter.data = data[0:8]  # TODO: don't know why list height doesn't fit all
+
+    def set_protocol(self, protocol):
+        if protocol != self.protocol:
+            self.protocol = protocol
+            self.init_servers_list()
+
+    def on_change_protocol(self, instance, protocol_name):
+        try:
+            index = protocol_names.index(protocol_name)
+        except ValueError:
+            index = 0
+        p = protocol_letters[index]
+        host = unicode(self.server_host.text)
+        pp = self.servers.get(host)
+        if p not in pp.keys():
+            p = pp.keys()[0]
+        port = pp[p]
+        self.server_host.text = host
+        self.server_port.text = port
+        self.set_protocol(p)
+
+    def server_changed(self, instance):
+        try:
+            index = instance.selection[0].index
+        except (AttributeError, IndexError):
+            return
+        item = instance.get_data_item(index)
+        self.change_server(item[0], self.protocol)
+
+    def change_server(self, host, protocol):
+        pp = self.servers.get(host, DEFAULT_PORTS)
+        if protocol:
+            port = pp.get(protocol)
+            if not port: protocol = None
+
+        if not protocol:
+            if 's' in pp.keys():
+                protocol = 's'
+                port = pp.get(protocol)
+            else:
+                protocol = pp.keys()[0]
+                port = pp.get(protocol)
+
+        self.server_host.text = host
+        self.server_port.text = port
+        self.server_protocol.text = protocol_names[protocol_letters.index(protocol)]
+
+        if not self.servers: return
+        # TODO: what's this?
+        #for p in protocol_letters:
+        #    i = protocol_letters.index(p)
+        #    j = self.server_protocol.model().index(i,0)
+        #    #if p not in pp.keys(): # and self.interface.is_connected:
+        #    #    self.server_protocol.model().setData(j, QVariant(0), Qt.UserRole-1)
+        #    #else:
+        #    #    self.server_protocol.model().setData(j, QVariant(33), Qt.UserRole-1)
+
+    def do_exec(self):
+        #if not self.exec_(): return
+
+        server = ':'.join([str(self.server_host.text),
+                           str(self.server_port.text),
+                           protocol_letters[protocol_names.index(self.server_protocol.text)] ])
+
+        if self.proxy_mode.text != 'NONE':
+            proxy = { 'mode':str(self.proxy_mode.text).lower(),
+                      'host':str(self.proxy_host.text),
+                      'port':str(self.proxy_port.text) }
+        else:
+            proxy = None
+
+        conf = self.parent.conf
+        wallet = self.parent.wallet
+        interface = wallet.interface
+        #conf.set_key("proxy", proxy, True)
+        conf.set_key("server", server, True)
+        interface.set_server(server, proxy)
+        conf.set_key('auto_cycle', self.autocycle_cb.active, True)
+        return True
+
+
 class ElectrumGui(object):
     def __init__(self, app):
         self.app = app
@@ -289,351 +635,7 @@ class ElectrumGui(object):
         # TODO: rewrite this function since the original code became class based rather than function based
         """Can be called directly (instance is None)
         or from a callback (instance is not None)"""
-
-        protocol_names = ['TCP', 'HTTP', 'SSL', 'HTTPS']
-        protocol_letters = 'thsg'
-
-        wallet = self.wallet
-
-        class NetworkDialog(object):
-            def __init__(self, interface, conf):
-                dialog = Dialog(title=_('Server'), size=('400dp', '600dp'))
-                # d.setMinimumSize(375, 20)
-
-                self.interface = interface
-                self.conf = conf
-                self.protocol = None
-
-                if instance is not None:
-                    if interface.is_connected:
-                        status = _("Connected to")+" %s"%(interface.host) + "\n%d "%(wallet.verifier.height)+_("blocks")
-                    else:
-                        status = _("Not connected")
-                    server = interface.server
-                else:
-                    #import random
-                    status = _("Please choose a server.") + "\n" + _("Select 'Cancel' if you are offline.")
-                    server = interface.server
-
-                dialog.add_content(Label(text=status))
-
-                self.servers = interface.get_servers()
-
-                ########## Server ##########
-                self.server_label = Label(text=_("Server") + ":")
-                self.server_host = TextInput(multiline=False)
-                self.server_port = TextInput(multiline=False)
-                # TODO: add icons/network.png
-                self.server_protocol = Spinner(
-                    text='HTTP',
-                    values=protocol_names,
-                    size_hint=(None, None),
-                    size=(100, 44),
-                    ) #pos_hint={'center_x': .5, 'center_y': .5})
-                self.server_protocol.bind(text=self.on_change_protocol)
-
-                vbox = BoxLayout(orientation='horizontal', size_hint=(1, None), height='40dp')
-                vbox.add_widget(self.server_label)
-                vbox.add_widget(self.server_protocol)
-                vbox.add_widget(self.server_host)
-                vbox.add_widget(self.server_port)
-                dialog.add_content(vbox)
-
-                ########## Server list ##########
-                column_width = ['%sdp' % i for i in [300, 75]]
-
-                # For header
-                header_text = [(_('Active Servers') if wallet.interface.servers else _('Default Servers'), _('Limit'))]
-
-                args_header_converter = lambda row_index, item: \
-                    {'height': '40dp',
-                     'cls_dicts': [
-                                   {'cls': ListItemButton,
-                                    'kwargs': {'halign': 'left',
-                                               'selected_color': [1, 1, 1, 1],
-                                               'size_hint': (None, None),
-                                               'width': column_width[0],
-                                               'height': '40dp',
-                                               'text': item[0]}},
-                                   {'cls': ListItemButton,
-                                    'kwargs': {'halign': 'left',
-                                               'selected_color': [1, 1, 1, 1],
-                                               'size_hint': (None, None),
-                                               'width': column_width[1],
-                                               'height': '40dp',
-                                               'text': item[1]}},
-                                   ]
-                         }
-
-                list_header_adapter = ListAdapter(data=header_text,
-                                           args_converter=args_header_converter,
-                                           selection_mode='single',
-                                           allow_empty_selection=False,
-                                           cls=CompositeListItem)
-
-                # For content of list
-                args_converter = lambda row_index, item: \
-                    {'size_hint': (None, 1),
-                     'height': '8dp',
-                     'cls_dicts': [
-                                   {'cls': ListItemButton,
-                                    'kwargs': {'halign': 'left',
-                                               'size_hint': (None, 1),
-                                               'width': column_width[0],
-                                               #'height': '40dp',
-                                               'text': item[0]}},
-                                   {'cls': ListItemButton,
-                                    'kwargs': {'halign': 'left',
-                                               'size_hint': (None, 1),
-                                               'width': column_width[1],
-                                               #'height': '40dp',
-                                               'text': item[1]}},
-                                   ]
-                         }
-
-                self.list_adapter = ListAdapter(data=[],
-                                           args_converter=args_converter,
-                                           selection_mode='single',
-                                           allow_empty_selection=False,
-                                           cls=CompositeListItem)
-
-
-                self.list_adapter.bind(on_selection_change=self.server_changed)
-
-                # Layout
-                header_box = BoxLayout(orientation='vertical', size_hint=(1, None), height='40dp')
-                list_header_view = ListView(adapter=list_header_adapter)
-                header_box.add_widget(list_header_view)
-
-                content_box = BoxLayout(orientation='vertical')
-                list_view = ListView(adapter=self.list_adapter)
-                content_box.add_widget(list_view)
-
-                box_layout = BoxLayout(orientation='vertical', padding=['0dp', '2dp'])
-                box_layout.add_widget(header_box)
-                box_layout.add_widget(content_box)
-
-                dialog.add_content(box_layout)
-
-                ########################
-                if server:
-                    host, port, protocol = server.split(':')
-                    self.set_protocol(protocol)
-                    self.change_server(host, protocol)
-                else:
-                    self.set_protocol('s')
-
-                ########################
-                # TODO: review it
-                #if not config.is_modifiable('server'):
-                #    for w in [self.server_host, self.server_port, self.server_protocol, self.servers_list_widget]: w.setEnabled(False)
-
-                ########## Proxy ##########
-                # proxy setting
-                proxy_label = Label(text=_("Proxy") + ":")
-                proxy_host = TextInput(multiline=False)
-                proxy_port = TextInput(multiline=False)
-                proxy_names = ['NONE', 'SOCKS4', 'SOCKS5', 'HTTP']
-                proxy_mode = Spinner(
-                    text='NONE',
-                    values=proxy_names,
-                    size_hint=(None, None),
-                    size=(100, 44),
-                    ) #pos_hint={'center_x': .5, 'center_y': .5})
-                vbox = BoxLayout(orientation='horizontal', size_hint=(1, None), height='40dp')
-                vbox.add_widget(proxy_label)
-                vbox.add_widget(proxy_mode)
-                vbox.add_widget(proxy_host)
-                vbox.add_widget(proxy_port)
-                dialog.add_content(vbox)
-
-                def check_for_disable(instance, proxy_mode_name):
-                    if proxy_mode_name != 'NONE':
-                        proxy_host.readonly = False
-                        proxy_port.readonly = False
-                    else:
-                        proxy_host.readonly = True
-                        proxy_port.readonly = True
-
-                
-                check_for_disable(None, 'NONE')
-                proxy_mode.bind(text=check_for_disable)
-
-                #if not wallet.config.is_modifiable('proxy'):
-                #    for w in [proxy_host, proxy_port, proxy_mode]: w.setEnabled(False)
-
-                proxy_config = interface.proxy if interface.proxy else { "mode":"none", "host":"localhost", "port":"8080"}
-                ####proxy_mode.setCurrentIndex(proxy_mode.findText(str(proxy_config.get("mode").upper())))
-                proxy_host.text = proxy_config.get("host")
-                proxy_port.text = proxy_config.get("port")
-
-                #server = unicode( server_host.text ) + ':' + unicode( server_port.text ) + ':' + (protocol_letters[server_protocol.currentIndex()])
-                #if proxy_mode.currentText() != 'NONE':
-                #    proxy = { u'mode':unicode(proxy_mode.currenttext).lower(), u'host':unicode(proxy_host.text), u'port':unicode(proxy_port.text) }
-                #else:
-                #    proxy = None
-
-                ########################
-                # Auto cycle
-                layout_autocycle = BoxLayout(orientation='horizontal')
-                autocycle_cb = CheckBox(size_hint=(None, 1), width='40dp')
-                autocycle_cb.active = wallet.config.get('auto_cycle', True)
-                if not wallet.config.is_modifiable('auto_cycle'): autocycle_cb.active = False
-                layout_autocycle.add_widget(autocycle_cb)
-                layout_autocycle.add_widget(Label(text=_('Try random servers if disconnected')))
-
-                master_instance = instance
-
-                def on_cancel_click(instance):
-                    dialog.close()
-
-                    # TODO: RuntimeError: threads can only be started once
-                    #interface.start(wait=False)
-                    #interface.send([('server.peers.subscribe', [])])
-
-                    # generate the first addresses, in case we are offline
-                    wallet.synchronize()
-
-                    verifier = WalletVerifier(interface, self.conf)
-                    verifier.start()
-                    wallet.set_verifier(verifier)
-                    synchronizer = WalletSynchronizer(wallet, self.conf)
-                    synchronizer.start()
-
-                    if master_instance is None:  # called from ElectrumSetupGui
-                        self.change_password_dialog()
-
-                def on_ok_click(instance):
-                    dialog.close()
-                    # wallet.config.set_key("proxy", proxy, True)
-                    wallet.config.set_key("server", server, True)
-                    # interface.set_server(server, proxy)
-                    wallet.config.set_key('auto_cycle', autocycle_cb.active, True)
-
-                    # TODO: RuntimeError: threads can only be started once
-                    #interface.start(wait=False)
-                    #interface.send([('server.peers.subscribe', [])])
-
-                    # generate the first addresses, in case we are offline
-                    if self.action == 'create':
-                        wallet.synchronize()
-
-                    verifier = WalletVerifier(interface, self.conf)
-                    verifier.start()
-                    wallet.set_verifier(verifier)
-                    synchronizer = WalletSynchronizer(wallet, self.conf)
-                    synchronizer.start()
-
-                    if self.action == 'restore':
-                        try:
-                            keep_it = self.restore_wallet()
-                            wallet.fill_addressbook()
-                        except:
-                            import traceback
-                            traceback.print_exc(file=sys.stdout)
-                            self.app.stop()
-
-                        if not keep_it: self.app.stop()
-
-                    if master_instance is None:  # called from ElectrumSetupGui
-                        self.change_password_dialog()
-
-
-                button_cancel = Button(text=_("Cancel"), on_press=on_cancel_click)
-                button_ok = Button(text=_("OK"), on_press=on_ok_click)
-
-                dialog.add_content(layout_autocycle)
-                dialog.add_button(button_cancel)
-                dialog.add_button(button_ok)
-                dialog.open()
-
-
-            def init_servers_list(self):
-                data = []
-                for _host, d in self.servers.items():
-                    if d.get(self.protocol):
-                        pruning_level = d.get('pruning','')
-                        data.append(( _host, pruning_level ))
-                self.list_adapter.data = data[0:8]  # TODO: don't know why list height doesn't fit all
-
-            def set_protocol(self, protocol):
-                if protocol != self.protocol:
-                    self.protocol = protocol
-                    self.init_servers_list()
-
-            def on_change_protocol(self, instance, protocol_name):
-                try:
-                    index = protocol_names.index(protocol_name)
-                except ValueError:
-                    index = 0
-                p = protocol_letters[index]
-                host = unicode(self.server_host.text)
-                pp = self.servers.get(host)
-                if p not in pp.keys():
-                    p = pp.keys()[0]
-                port = pp[p]
-                self.server_host.text = host
-                self.server_port.text = port
-                self.set_protocol(p)
-
-            def server_changed(self, instance):
-                try:
-                    index = instance.selection[0].index
-                except (AttributeError, IndexError):
-                    return
-                item = instance.get_data_item(index)
-                self.change_server(item[0], self.protocol)
-
-            def change_server(self, host, protocol):
-                pp = self.servers.get(host, DEFAULT_PORTS)
-                if protocol:
-                    port = pp.get(protocol)
-                    if not port: protocol = None
-
-                if not protocol:
-                    if 's' in pp.keys():
-                        protocol = 's'
-                        port = pp.get(protocol)
-                    else:
-                        protocol = pp.keys()[0]
-                        port = pp.get(protocol)
-
-                self.server_host.text = host
-                self.server_port.text = port
-                #self.server_protocol.setCurrentIndex(protocol_letters.index(protocol))
-
-                if not self.servers: return
-                # TODO: what's this?
-                #for p in protocol_letters:
-                #    i = protocol_letters.index(p)
-                #    j = self.server_protocol.model().index(i,0)
-                #    #if p not in pp.keys(): # and self.interface.is_connected:
-                #    #    self.server_protocol.model().setData(j, QVariant(0), Qt.UserRole-1)
-                #    #else:
-                #    #    self.server_protocol.model().setData(j, QVariant(33), Qt.UserRole-1)
-
-            def do_exec(self):
-                #if not self.exec_(): return
-
-                #server = ':'.join([str(self.server_host.text),
-                #                   str(self.server_port.text),
-                #                   (protocol_letters[self.server_protocol.currentIndex()]) ])
-
-                #if self.proxy_mode.currentText() != 'NONE':
-                #    proxy = { 'mode':str(self.proxy_mode.currentText()).lower(),
-                #              'host':str(self.proxy_host.text),
-                #              'port':str(self.proxy_port.text) }
-                #else:
-                #    proxy = None
-
-                #self.config.set_key("proxy", proxy, True)
-                #self.config.set_key("server", server, True)
-                #self.interface.set_server(server, proxy)
-                #self.config.set_key('auto_cycle', self.autocycle_cb.isChecked(), True)
-                return True
-
-        # TODO: add instance parameter?
-        NetworkDialog(self.wallet.interface, self.conf).do_exec()
+        NetworkDialog(self, instance).do_exec()
 
 
 class ElectrumSetupGui(ElectrumGui):
@@ -784,6 +786,8 @@ class ElectrumSetupGui(ElectrumGui):
         return True
 
     def load_wallet(self):
+        interface = self.wallet.interface
+
         interface.start(wait=False)
         interface.send([('server.peers.subscribe', [])])
 
@@ -1508,9 +1512,7 @@ if __name__ == "__main__":
 
     el_conf = SimpleConfig(config_options)
     el_wallet = Wallet(el_conf)
-
-    interface = Interface(el_conf, True)
-    el_wallet.interface = interface
+    el_wallet.interface = Interface(el_conf, True)
 
     app = ElectrumApp(el_wallet, el_conf)
     app.run()
