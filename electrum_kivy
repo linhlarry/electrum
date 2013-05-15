@@ -3,6 +3,11 @@ import imp
 imp.load_module('electrum', *imp.find_module('lib'))
 imp.load_module('electrum_gui', *imp.find_module('gui'))
 
+import kivy
+from kivy.config import Config
+Config.set('graphics', 'width', '800')
+Config.set('graphics', 'height', '400')
+
 import os
 import sys
 import optparse
@@ -675,72 +680,71 @@ class ElectrumGui(object):
         def create_display_tab():
             layout = BoxLayout(orientation='vertical')
 
-            nz_e = TextInput(text="%d" % self.wallet.num_zeros, multiline=False, size_hint_x=None, width='100dp')
+            self.st_nz_e = TextInput(text="%d" % self.wallet.num_zeros, multiline=False, size_hint_x=None, width='100dp')
             layout.add_widget(create_setting_widget(
-                    _('Display zeros'), nz_e,
+                    _('Display zeros'), self.st_nz_e,
                     _('Number of zeros displayed after the decimal point. For example, if this is set to 2, "1." will be displayed as "1.00"')))
 
             # TODO:
             #if not self.conf.is_modifiable('num_zeros'):
             #    for w in [nz_e, nz_label]: w.setEnabled(False)
 
-            lang_combo = ComboBox(
+            self.st_lang_combo = ComboBox(
                 key=self.conf.get("language", ''),
                 items=languages.items(),
                 size_hint=(None, None),
                 size=(100, 44),
                 )
             layout.add_widget(create_setting_widget(
-                    _('Language'), lang_combo,
+                    _('Language'), self.st_lang_combo,
                     _('Select which language is used in the GUI (after restart).')))
- 
+
             # TODO:
             #if not self.config.is_modifiable('language'):
             #    for w in [lang_combo, lang_label]: w.setEnabled(False)
-    
+
             currencies = self.exchanger.get_currencies()
             currencies.insert(0, "None")
             currencies = zip(currencies, currencies)
 
-            cur_combo = ComboBox(
+            self.st_cur_combo = ComboBox(
                 key=self.conf.get("currency", "None"),
                 items=currencies,
                 size_hint=(None, None),
                 size=(100, 44),
                 )
             layout.add_widget(create_setting_widget(
-                    _('Currency'), cur_combo,
+                    _('Currency'), self.st_cur_combo,
                     _('Select which currency is used for quotes.')))
 
-            expert_cb = CheckBox(text=_('Expert mode'))
-            expert_cb.active = self.expert_mode
+            self.st_expert_cb = CheckBox(text=_('Expert mode'))
+            self.st_expert_cb.active = self.expert_mode
             hh =  _('In expert mode, your client will:') + '\n'  \
                 + _(' - Show change addresses in the Receive tab') + '\n'  \
                 + _(' - Display the balance of each address') + '\n'  \
-                + _(' - Add freeze/prioritize actions to addresses.') 
+                + _(' - Add freeze/prioritize actions to addresses.')
             layout.add_widget(create_setting_widget(
-                    _('Expert mode'), expert_cb, hh, False))
+                    _('Expert mode'), self.st_expert_cb, hh, False))
 
             return layout
 
         def create_wallet_tab():
             layout = BoxLayout(orientation='vertical')
 
-            fee_e = TextInput(text=self.format_amount(self.wallet.fee).strip(), multiline=False, size_hint_x=None, width='100dp')
-            # TODO: default value from config
+            self.st_fee_e = TextInput(text=self.format_amount(self.wallet.fee).strip(), multiline=False, size_hint_x=None, width='100dp')
             layout.add_widget(create_setting_widget(
-                    _('Transaction fee'), fee_e,
+                    _('Transaction fee'), self.st_fee_e,
                     _('Fee per kilobyte of transaction.') + ' ' \
                   + _('Recommended value') + ': ' + self.format_amount(50000)))
 
-            usechange_cb = CheckBox(text=_('Expert mode'))
-            usechange_cb.active = self.wallet.use_change
+            self.st_usechange_cb = CheckBox(text=_('Expert mode'))
+            self.st_usechange_cb.active = self.wallet.use_change
             layout.add_widget(create_setting_widget(
-                    _('Expert mode'), usechange_cb,
+                    _('Expert mode'), self.st_usechange_cb,
                     _('Using change addresses makes it more difficult for other people to track your transactions.'),
                     False))
 
-            gap_e = TextInput(text="%d" % self.wallet.gap_limit, multiline=False, size_hint_x=None, width='100dp')
+            self.st_gap_e = TextInput(text="%d" % self.wallet.gap_limit, multiline=False, size_hint_x=None, width='100dp')
 
             msg =  _('The gap limit is the maximal number of contiguous unused addresses in your sequence of receiving addresses.') + '\n' \
                   + _('You may increase it if you need more receiving addresses.') + '\n\n' \
@@ -748,17 +752,17 @@ class ElectrumGui(object):
                   + _('Given the current status of your address sequence, the minimum gap limit you can use is:')+' ' + '%d'%self.wallet.min_acceptable_gap() + '\n\n' \
                   + _('Warning') + ': ' \
                   + _('The gap limit parameter must be provided in order to recover your wallet from seed.') + ' ' \
-                  + _('Do not modify it if you do not understand what you are doing, or if you expect to recover your wallet without knowing it!') + '\n\n' 
+                  + _('Do not modify it if you do not understand what you are doing, or if you expect to recover your wallet without knowing it!') + '\n\n'
 
             layout.add_widget(create_setting_widget(
-                    _('Gap limit'), gap_e, msg))
+                    _('Gap limit'), self.st_gap_e, msg))
 
             # TODO:
             #if not self.config.is_modifiable('gap_limit'):
             #    for w in [gap_e, gap_label]: w.setEnabled(False)
 
             units = ['BTC', 'mBTC']
-            unit_combo = ComboBox(
+            self.st_unit_combo = ComboBox(
                 key=self.base_unit(),
                 items=zip(units, units),
                 size_hint=(None, None),
@@ -766,20 +770,63 @@ class ElectrumGui(object):
                 )
 
             layout.add_widget(create_setting_widget(
-                    _('Base unit'), unit_combo,
+                    _('Base unit'), self.st_unit_combo,
                     _('Base unit of your wallet.') \
                     + '\n1BTC=1000mBTC.\n' \
                     + _(' This settings affects the fields in the Send tab')))
 
             return layout
 
+        def create_import_export_tab():
+            layout = BoxLayout(orientation='vertical')
+
+            buttons = BoxLayout(orientation='horizontal')
+            buttons.add_widget(Button(text=_('Export'), on_press=lambda x: x))
+            buttons.add_widget(Button(text=_('Import'), on_press=lambda x: x))
+            layout.add_widget(create_setting_widget(
+                    _('Labels'), buttons,
+                    _('Export your labels as json')))
+
+            buttons = BoxLayout(orientation='horizontal')
+            buttons.add_widget(Button(text=_('Export'), on_press=lambda x: x))
+            layout.add_widget(create_setting_widget(
+                    _('History'), buttons,
+                    _('Export your transaction history as csv')))
+
+            buttons = BoxLayout(orientation='horizontal')
+            buttons.add_widget(Button(text=_('Export'), on_press=lambda x: x))
+            buttons.add_widget(Button(text=_('Import'), on_press=lambda x: x))
+            layout.add_widget(create_setting_widget(
+                    _('Private keys'), buttons,
+                    _('Import private key')))
+
+            buttons = BoxLayout(orientation='horizontal')
+            buttons.add_widget(Button(text=_('Show'), on_press=lambda x: x))
+            layout.add_widget(create_setting_widget(
+                    _('Master Public Key'), buttons,
+                    _('Your Master Public Key can be used to create receiving addresses, but not to sign transactions.') + ' ' \
+                      + _('If you give it to someone, they will be able to see your transactions, but not to spend your money.') + ' ' \
+                      + _('If you restore your wallet from it, a watching-only (deseeded) wallet will be created.')))
+
+            buttons = BoxLayout(orientation='horizontal')
+            buttons.add_widget(Button(text=_('From file'), on_press=lambda x: x))
+            buttons.add_widget(Button(text=_('From text'), on_press=lambda x: x))
+            layout.add_widget(create_setting_widget(
+                    _('Load transaction'), buttons,
+                    _("This will give you the option to sign or broadcast a transaction based on it's status.")))
+
+            return layout
+
+
         self.setting_tabs = TabbedPanel(do_default_tab=False)
         self.add_setting_tab(create_display_tab(), _('Display'))
         self.add_setting_tab(create_wallet_tab(), _('Wallet'))
-        self.add_setting_tab(self.create_receive_tab(), _('Import/Export'))
+        self.add_setting_tab(create_import_export_tab(), _('Import/Export'))
+        # no plugins for Kivy GUI
 
         dialog.add_content(self.setting_tabs)
 
+        self.run_hook('create_settings_tab')  # removed 2nd arg
 
         def on_cancel_click(instance):
             dialog.close()
@@ -787,12 +834,82 @@ class ElectrumGui(object):
         def on_ok_click(instance):
             dialog.close()
 
+            ##########
+            fee = unicode(self.st_fee_e.text)
+            try:
+                fee = self.read_amount(fee)
+            except:
+                return self.error_box(content_text=_('Invalid value') +': %s'%fee)
+
+            self.wallet.set_fee(fee)
+
+            ##########
+            nz = unicode(self.st_nz_e.text)
+            try:
+                nz = int( nz )
+                if nz>8: nz=8
+            except:
+                return self.error_box(content_text=_('Invalid value')+':%s'%nz)
+
+            if self.wallet.num_zeros != nz:
+                self.wallet.num_zeros = nz
+                self.conf.set_key('num_zeros', nz, True)
+                self.update_history_tab()
+                ####self.update_receive_tab()
+
+            usechange_result = self.st_usechange_cb.active
+            if self.wallet.use_change != usechange_result:
+                self.wallet.use_change = usechange_result
+                self.conf.set_key('use_change', self.wallet.use_change, True)
+
+            #import pdb; pdb.set_trace()
+            unit_result = self.st_unit_combo.text
+            if self.base_unit() != unit_result:
+                self.decimal_point = 8 if unit_result == 'BTC' else 5
+                self.conf.set_key('decimal_point', self.decimal_point, True)
+                self.update_history_tab()
+                self.update_status()
+
+            try:
+                n = int(self.st_gap_e.text)
+            except:
+                return self.error_box(content_text=_('Invalid value'))
+
+            if self.wallet.gap_limit != n:
+                r = self.wallet.change_gap_limit(n)
+                if r:
+                    ####self.update_receive_tab()
+                    self.conf.set_key('gap_limit', self.wallet.gap_limit, True)
+                else:
+                    self.error_box(content_text=_('Invalid value'))
+                    # TODO: no return???
+
+            need_restart = False
+
+            lang_request = str(self.st_lang_combo.key)
+            if lang_request != self.conf.get('language'):
+                self.conf.set_key("language", lang_request, True)  # TODO: why can't save unicode
+                need_restart = True
+
+            cur_request = str(self.st_cur_combo.text)
+            if cur_request != self.conf.get('currency', "None"):
+                self.conf.set_key('currency', cur_request, True)  # TODO: why can't save unicode
+                self.update_wallet()
+
+            self.run_hook('close_settings_dialog')
+
+            if need_restart:
+                self.info_box(content_text=_('Please restart Electrum to activate the new GUI settings'))
+
+            ######self.receive_tab_set_mode(self.st_expert_cb.active)
+
+
         button_cancel = Button(text=_("Cancel"), on_press=on_cancel_click)
         button_ok = Button(text=_("OK"), on_press=on_ok_click)
 
         dialog.add_button(button_cancel)
         dialog.add_button(button_ok)
- 
+
         dialog.open()
 
         return
