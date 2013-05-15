@@ -51,7 +51,7 @@ class ComboBox(Button):
         self._build_dropdown()
         self._update_text()
 
-    def _update_text(self):
+    def _update_text(self, *largs):
         try:
             self.text = self.items_dict[self.key]
         except KeyError:
@@ -72,14 +72,16 @@ class ComboBox(Button):
         dp.clear_widgets()
         for key, value in self.items:
             item = cls(text=value)
-            item.bind(on_release=lambda option: dp.select(option.text))
+            # extra attribute
+            item.key = key
+            item.bind(on_release=lambda option: dp.select(option.key))
             dp.add_widget(item)
 
     def _toggle_dropdown(self, *largs):
         self.is_open = not self.is_open
 
     def _on_dropdown_select(self, instance, data, *largs):
-        self.text = data
+        self.key = data
         self.is_open = False
 
     def on_is_open(self, instance, value):
