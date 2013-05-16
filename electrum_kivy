@@ -1138,6 +1138,11 @@ class ElectrumMainGui(ElectrumGui):
         # set initial message
         #### self.console.showMessage(self.wallet.interface.banner)
 
+        # fix fee
+        if self.wallet.fee < 50000:
+            self.wallet.set_fee(50000)
+            self.info_box(content_text="Note: Your default fee was raised to 0.0005 BTC/kilobyte")
+
         # plugins that need to change the GUI do it here
         self.run_hook('init_gui')
 
