@@ -18,6 +18,7 @@ import re
 import json
 import traceback
 import threading
+import csv
 
 from pprint import pprint
 from decimal import Decimal
@@ -95,6 +96,55 @@ class Dialog(object):
 
     def add_button(self, widget, index=0):
         self.layout_buttons.add_widget(widget, index)
+
+
+DEFAULT_PATH = '/tmp/'
+
+from kivy.uix.filechooser import FileChooserListView
+class SaveDialog(Dialog):
+    def __init__(self, title, path=DEFAULT_PATH, filename='', filters=[]):
+        super(SaveDialog, self).__init__(title, size_hint=(0.9, 0.9))
+
+        def update_input(instance, path):
+            if path:
+                self.text_input.text = path[0].split('/')[-1]
+
+        # ignore filters now since it doesn't flexible
+        self.file_chooser = FileChooserListView(path=path)
+        self.file_chooser.bind(selection=update_input)
+        self.text_input = TextInput(size_hint_y=None, height='30dp', multiline=False)
+        if filename:
+            self.text_input.text = filename
+        self.add_content(self.file_chooser)
+        self.add_content(self.text_input)
+
+        self.cancel_button = Button(text=_("Cancel"), on_press=lambda instance: self.close())
+        self.save_button = Button(text=_("Save"))
+        self.add_button(self.cancel_button)
+        self.add_button(self.save_button)
+
+
+class LoadDialog(Dialog):
+    def __init__(self, title, path=DEFAULT_PATH, filename='', filters=[]):
+        super(LoadDialog, self).__init__(title, size_hint=(0.9, 0.9))
+
+        def update_input(instance, path):
+            if path:
+                self.text_input.text = path[0].split('/')[-1]
+
+        # ignore filters now since it doesn't flexible
+        self.file_chooser = FileChooserListView(path=path)
+        self.file_chooser.bind(selection=update_input)
+        self.text_input = TextInput(size_hint_y=None, height='30dp', multiline=False)
+        if filename:
+            self.text_input.text = filename
+        self.add_content(self.file_chooser)
+        self.add_content(self.text_input)
+
+        self.cancel_button = Button(text=_("Cancel"), on_press=lambda instance: self.close())
+        self.load_button = Button(text=_("Load"))
+        self.add_button(self.cancel_button)
+        self.add_button(self.load_button)
 
 
 class StatusBar(object):
@@ -489,24 +539,27 @@ class ElectrumGui(object):
         self.action = None  # updated by self.restore_or_create()
 
     def _message_box(self, title, content_text, button_text=_("OK"), callback=None):
+        def _callback(instance):
+            dialog.close()
+            if callback is not None and callable(callback):
+                apply(callback, [instance])
+
         dialog = Dialog(title, size=('400dp', '200dp'))
-        if callback is None:
-            callback = lambda instance: dialog.close()
         label = Label(text=content_text)
         label.bind(size=label.setter('text_size'))
         dialog.add_content(label)
-        dialog.add_button(Button(text=button_text, on_press=callback))
+        dialog.add_button(Button(text=button_text, on_press=_callback))
         dialog.open()
         return dialog
 
-    def info_box(self, title=_("Info"), content_text=_("More info"), button_text=_("OK")):
-        return self._message_box(title, content_text, button_text)
+    def info_box(self, title=_("Info"), content_text=_("More info"), button_text=_("OK"), callback=None):
+        return self._message_box(title, content_text, button_text, callback=callback)
 
-    def help_box(self, title=_("Help"), content_text=_("More help"), button_text=_("OK")):
-        return self._message_box(title, content_text, button_text)
+    def help_box(self, title=_("Help"), content_text=_("More help"), button_text=_("OK"), callback=None):
+        return self._message_box(title, content_text, button_text, callback=callback)
 
-    def error_box(self, title=_("Error"), content_text=_("Error info"), button_text=_("OK")):
-        return self._message_box(title, content_text, button_text)
+    def error_box(self, title=_("Error"), content_text=_("Error info"), button_text=_("OK"), callback=None):
+        return self._message_box(title, content_text, button_text, callback=callback)
 
     def exit_box(self, title=_("Error"), content_text=_("Error info"), button_text=_("OK")):
         return self._message_box(title, content_text, button_text, callback=lambda instance: self.app.stop())
@@ -778,30 +831,300 @@ class ElectrumGui(object):
             return layout
 
         def create_import_export_tab():
+            def do_callback(instance):
+                if instance.id == 'export_labels':
+                    title = _("Select file to save your labels")
+                    path = DEFAULT_PATH
+                    filename = "electrum_labels.dat"
+                    filters = ["*.dat"]
+
+                    def save(instance):
+                        path = dialog.file_chooser.path
+                        filename = dialog.text_input.text.strip()
+                        labels = self.wallet.labels
+                        try:
+                            with open(os.path.join(path, filename), 'w+') as stream:
+                                json.dump(labels, stream)
+                            self.info_box(title="Labels exported", content_text=_("Your labels were exported to")+" '%s'" % str(filename))
+                        except (IOError, os.error), reason:
+                            self.error_box(title="Unable to export labels", content_text=_("Electrum was unable to export your labels.")+"\n" + str(reason))
+                        dialog.close()
+
+                    dialog = SaveDialog(title, path=path, filename=filename, filters=filters)
+                    dialog.save_button.bind(on_press=save)
+                    dialog.open()
+
+                elif instance.id == 'import_labels':
+                    title = _("Open labels file")
+                    path = DEFAULT_PATH
+                    filename = ""
+                    filters = ["*.dat"]
+
+                    def load(instance):
+                        path = dialog.file_chooser.path
+                        filename = dialog.text_input.text.strip()
+
+                        labels = self.wallet.labels
+                        try:
+                            with open(os.path.join(path, filename), 'r') as stream:
+                                for key, value in json.loads(stream.read()).items():
+                                    self.wallet.labels[key] = value
+                                self.wallet.save()
+                            self.info_box(title="Labels imported", content_text=_("Your labels were imported from")+" '%s'" % str(filename))
+                        except (IOError, os.error), reason:
+                            self.error_box(title="Unable to import labels", content_text=_("Electrum was unable to import your labels.")+"\n" + str(reason))
+
+                        dialog.close()
+
+                    dialog = LoadDialog(title, path=path, filename=filename, filters=filters)
+                    dialog.load_button.bind(on_press=load)
+                    dialog.open()
+
+                elif instance.id == 'export_history':
+                    title = _("Select file to export your wallet transactions to")
+                    path = os.path.expanduser('~')
+                    filename = "electrum-history.csv"
+                    filters = ["*.csv"]
+
+                    def save(instance):
+                        path = dialog.file_chooser.path
+                        filename = dialog.text_input.text.strip()
+                        # extracted from gui_lite.csv_transaction
+                        wallet = self.wallet
+                        try:
+                            with open(os.path.join(path, filename), "w+") as stream:
+                                transaction = csv.writer(stream)
+                                transaction.writerow(["transaction_hash","label", "confirmations", "value", "fee", "balance", "timestamp"])
+                                for item in wallet.get_tx_history():
+                                    tx_hash, confirmations, is_mine, value, fee, balance, timestamp = item
+                                    if confirmations:
+                                        if timestamp is not None:
+                                            try:
+                                                time_string = datetime.datetime.fromtimestamp(timestamp).isoformat(' ')[:-3]
+                                            except [RuntimeError, TypeError, NameError] as reason:
+                                                time_string = "unknown"
+                                                pass
+                                        else:
+                                          time_string = "unknown"
+                                    else:
+                                        time_string = "pending"
+        
+                                    if value is not None:
+                                        value_string = format_satoshis(value, True, wallet.num_zeros)
+                                    else:
+                                        value_string = '--'
+        
+                                    if fee is not None:
+                                        fee_string = format_satoshis(fee, True, wallet.num_zeros)
+                                    else:
+                                        fee_string = '0'
+        
+                                    if tx_hash:
+                                        label, is_default_label = wallet.get_label(tx_hash)
+                                    else:
+                                      label = ""
+        
+                                    balance_string = format_satoshis(balance, False, wallet.num_zeros)
+                                    transaction.writerow([tx_hash, label, confirmations, value_string, fee_string, balance_string, time_string])
+                                self.info_box(title="CSV Export created", content_text="Your CSV export has been successfully created.")
+                        except (IOError, os.error), reason:
+                            export_error_label = _("Electrum was unable to produce a transaction export.")
+                            self.error_box(title="Unable to create csv", content_text=export_error_label + "\n" + str(reason))
+                        dialog.close()
+
+                    dialog = SaveDialog(title, path=path, filename=filename, filters=filters)
+                    dialog.save_button.bind(on_press=save)
+                    dialog.open()
+
+                elif instance.id == 'export_privkey':
+                    # NOTE: equivalent to @protected
+                    def protected_save_dialog(password=None):
+                        def show_save_dialog(instance):
+                            title = _("Select file to export your private keys to")
+                            path = DEFAULT_PATH
+                            filename = "electrum-private-keys.csv"
+                            filters = ["*.csv"]
+
+                            def save(instance):
+                                path = dialog.file_chooser.path
+                                filename = dialog.text_input.text.strip()
+                                try:
+                                    with open(os.path.join(path, filename), "w+") as csvfile:
+                                        transaction = csv.writer(csvfile)
+                                        transaction.writerow(["address", "private_key"])
+                                        for addr, pk in self.wallet.get_private_keys(self.wallet.addresses(True), password).items():
+                                            transaction.writerow(["%34s"%addr,pk])
+                                        self.info_box(content_text=_("Private keys exported."))
+                                except (IOError, os.error), reason:
+                                    export_error_label = _("Electrum was unable to produce a private key-export.")
+                                    return self.info_box(title="Unable to create csv", content_text=export_error_label + "\n" + str(reason))
+                                except BaseException, e:
+                                  return self.info_box(content_text=str(e))
+
+                                dialog.close()
+
+                            dialog = SaveDialog(title, path=path, filename=filename, filters=filters)
+                            dialog.save_button.bind(on_press=save)
+                            dialog.open()
+
+                        self.info_box(content_text="%s\n%s\n%s" % (
+                                        _("WARNING: ALL your private keys are secret."),
+                                        _("Exposing a single private key can compromise your entire wallet!"),
+                                        _("In particular, DO NOT use 'redeem private key' services proposed by third parties.")),
+                                      callback=show_save_dialog)
+
+                    if self.wallet.use_encryption:
+                        return self.password_dialog(post_ok=protected_save_dialog)
+                    return protected_save_dialog()
+
+                elif instance.id == 'import_privkey':
+                    # NOTE: equivalent to @protected
+                    def protected_load_dialog(password=None):
+                        def show_privkey_dialog(instance=None):
+                            def do_cancel_privkey(instance):
+                                import_dialog.close()
+                                confirm_dialog.close()
+
+                            def do_import_privkey(instance):
+                                text = text_input.text.split()
+                                badkeys = []
+                                addrlist = []
+                                for key in text:
+                                    try:
+                                        addr = self.wallet.import_key(key, password)
+                                    except BaseException as e:
+                                        badkeys.append(key)
+                                        continue
+                                    if not addr: 
+                                        badkeys.append(key)
+                                    else:
+                                        addrlist.append(addr)
+                                if addrlist:
+                                    self.info_box(title=_('Information'), content_text=_("The following addresses were added") + ':\n' + '\n'.join(addrlist))
+                                if badkeys:
+                                    self.error_box(title=_('Error'), content_text=_("The following inputs could not be imported") + ':\n'+ '\n'.join(badkeys))
+                                ####self.update_receive_tab()
+                                self.update_history_tab()
+
+                                if instance is not None:  # called via callback
+                                    confirm_dialog.close()
+
+                            # Init another dialog
+                            text_input = TextInput()
+                            import_dialog = Dialog(title=_('Import private keys'))
+                            import_dialog.add_content(Label(text=_("Enter private keys")+':'))
+                            import_dialog.add_content(text_input)
+                            import_dialog.add_button(Button(text=_('Cancel'), on_press=do_cancel_privkey))
+                            import_dialog.add_button(Button(text=_('Import'), on_press=do_import_privkey))
+                            import_dialog.open()
+                
+                        if not self.wallet.imported_keys:
+                            confirm_dialog = Dialog(title=_('Warning'))
+                            label = Label(text='[b]'+_('Warning') +':[/b]\n'+ _('Imported keys are not recoverable from seed.') + ' ' \
+                                                    + _('If you ever need to restore your wallet from its seed, these keys will be lost.') + '\n\n' \
+                                                    + _('Are you sure you understand what you are doing?'),
+                                                    markup=True)
+                            label.bind(size=label.setter('text_size'))
+                            confirm_dialog.add_content(label)
+                            confirm_dialog.add_button(Button(text=_("No"), on_press=lambda instance: confirm_dialog.close()))
+                            confirm_dialog.add_button(Button(text=_("Yes"), on_press=show_privkey_dialog))
+                            confirm_dialog.open()
+                        else:
+                            show_privkey_dialog()
+
+                    if self.wallet.use_encryption:
+                        return self.password_dialog(post_ok=protected_load_dialog)
+                    return protected_load_dialog()
+
+                elif instance.id == 'show_pubkey':
+                    dialog = Dialog(title=_("Master Public Key"))
+
+                    # NOTE: Kivy TextInput doesn't wrap long text. So must handle it manually
+                    pub_key = self.wallet.get_master_public_key()
+                    pub_key = '%s\n%s\n%s\n%s' % (pub_key[0:31], pub_key[32:63], pub_key[64:95], pub_key[96:127])
+                    dialog.add_content(Label(text=_('Your Master Public Key is:')))
+                    dialog.add_content(TextInput(text=pub_key, readonly=True))
+                    dialog.add_button(Button(text=_("OK"), on_press=lambda instance: dialog.close()))
+
+                    dialog.open()
+
+                elif instance.id == 'from_file':
+                    title = _("Select your transaction file")
+                    path = DEFAULT_PATH
+                    filename = ""
+                    filters = ["*.txn"]
+
+                    def load(instance):
+                        path = dialog.file_chooser.path
+                        filename = dialog.text_input.text.strip()
+
+                        if not filename:
+                            return
+                        try:
+                            with open(os.path.join(path, filename), "r") as f:
+                                file_content = f.read()
+                        except (ValueError, IOError, os.error), reason:
+                            self.error_box(title="Unable to read file or no transaction found",
+                                           content_text=_("Electrum was unable to open your transaction file") + "\n" + str(reason))
+                
+                        tx_dict = self.tx_dict_from_text(file_content)
+                        if tx_dict: 
+                            self.create_process_transaction_window(tx_dict)
+
+                        dialog.close()
+
+                    dialog = LoadDialog(title, path=path, filename=filename, filters=filters)
+                    dialog.load_button.bind(on_press=load)
+                    dialog.open()
+
+                elif instance.id == 'from_text':
+                    def load_transaction(instance):
+                        text = transaction_input.text
+                        if not text:
+                            return
+                        tx_dict = self.tx_dict_from_text(text)
+                        if tx_dict:
+                            self.create_process_transaction_window(tx_dict)
+
+                    dialog = Dialog(title=_("Input raw transaction"))
+    
+                    transaction_input = TextInput()
+                    dialog.add_content(Label(text=_('Transaction:')))
+                    dialog.add_content(transaction_input)
+                    dialog.add_button(Button(text=_("Cancel"), on_press=lambda instance: dialog.close()))
+                    dialog.add_button(Button(text=_("Load transaction"), on_press=load_transaction))
+    
+                    dialog.open()
+
+                    return
+
+                # End of do_callback() #
+ 
+            # Layout of this tab
             layout = BoxLayout(orientation='vertical')
 
             buttons = BoxLayout(orientation='horizontal')
-            buttons.add_widget(Button(text=_('Export'), on_press=lambda x: x))
-            buttons.add_widget(Button(text=_('Import'), on_press=lambda x: x))
+            buttons.add_widget(Button(id='export_labels', text=_('Export'), on_press=do_callback))
+            buttons.add_widget(Button(id='import_labels', text=_('Import'), on_press=do_callback))
             layout.add_widget(create_setting_widget(
                     _('Labels'), buttons,
                     _('Export your labels as json')))
 
             buttons = BoxLayout(orientation='horizontal')
-            buttons.add_widget(Button(text=_('Export'), on_press=lambda x: x))
+            buttons.add_widget(Button(id='export_history', text=_('Export'), on_press=do_callback))
             layout.add_widget(create_setting_widget(
                     _('History'), buttons,
                     _('Export your transaction history as csv')))
 
             buttons = BoxLayout(orientation='horizontal')
-            buttons.add_widget(Button(text=_('Export'), on_press=lambda x: x))
-            buttons.add_widget(Button(text=_('Import'), on_press=lambda x: x))
+            buttons.add_widget(Button(id='export_privkey', text=_('Export'), on_press=do_callback))
+            buttons.add_widget(Button(id='import_privkey', text=_('Import'), on_press=do_callback))
             layout.add_widget(create_setting_widget(
                     _('Private keys'), buttons,
                     _('Import private key')))
 
             buttons = BoxLayout(orientation='horizontal')
-            buttons.add_widget(Button(text=_('Show'), on_press=lambda x: x))
+            buttons.add_widget(Button(id='show_pubkey', text=_('Show'), on_press=do_callback))
             layout.add_widget(create_setting_widget(
                     _('Master Public Key'), buttons,
                     _('Your Master Public Key can be used to create receiving addresses, but not to sign transactions.') + ' ' \
@@ -809,8 +1132,8 @@ class ElectrumGui(object):
                       + _('If you restore your wallet from it, a watching-only (deseeded) wallet will be created.')))
 
             buttons = BoxLayout(orientation='horizontal')
-            buttons.add_widget(Button(text=_('From file'), on_press=lambda x: x))
-            buttons.add_widget(Button(text=_('From text'), on_press=lambda x: x))
+            buttons.add_widget(Button(id='from_file', text=_('From file'), on_press=do_callback))
+            buttons.add_widget(Button(id='from_text', text=_('From text'), on_press=do_callback))
             layout.add_widget(create_setting_widget(
                     _('Load transaction'), buttons,
                     _("This will give you the option to sign or broadcast a transaction based on it's status.")))
@@ -1393,6 +1716,17 @@ class ElectrumMainGui(ElectrumGui):
     def protected(func):
         return lambda s, *args: s.do_protect(func, args)
 
+    def do_protect(self, func, args):
+        _args = args
+        def run_func(password=None):
+            args = (self,) + _args + (password,)
+            apply(func, args)
+
+        if self.wallet.use_encryption:
+            return self.password_dialog(post_ok=run_func)
+
+        return run_func()
+
     @protected
     def do_send(self, instance, password):
         label = unicode(self.message_e.text)
@@ -1470,17 +1804,6 @@ class ElectrumMainGui(ElectrumGui):
     def toggle_priority(self, addr):
         # TODO
         pass
-
-    def do_protect(self, func, args):
-        _args = args
-        def run_func(password=None):
-            args = (self,) + _args + (password,)
-            apply(func, args)
-
-        if self.wallet.use_encryption:
-            return self.password_dialog(post_ok=run_func)
-
-        return run_func()
 
     def create_list_tab(self, headers):
         # NOTE: don't need this generic function in Kivy GUI
@@ -1626,6 +1949,19 @@ class ElectrumMainGui(ElectrumGui):
         if not self.wallet.seed:
             return self.error_box(content_text=_('No seed'))
         return self.show_seed(self.wallet.seed, self.wallet.imported_keys)
+
+    def tx_dict_from_text(self, txt):
+        try:
+            tx_dict = json.loads(str(txt))
+            assert "hex" in tx_dict.keys()
+            assert "complete" in tx_dict.keys()
+            if not tx_dict["complete"]:
+                assert "input_info" in tx_dict.keys()
+        except:
+            self.error_box(title="Unable to parse transaction",
+                           content_text=_("Electrum was unable to parse your transaction"))
+            return None
+        return tx_dict
 
 
 class ElectrumApp(App):
