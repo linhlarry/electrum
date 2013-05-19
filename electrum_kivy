@@ -191,11 +191,12 @@ class GridView(object):
                 kwargs = {
                     'halign': 'left',
                     'size_hint_y': None,
-                    'height': '40dp',
+                    'height': '30dp',
                 }
 
                 if getter is None:  # this is header
-                    kwargs['selected_color'] = [1, 1, 1, 1]  # header shouldn't be selected
+                    kwargs['background_color'] = [0, 1, 1, 1]
+                    kwargs['selected_color'] = [0, 1, 1, 1]  # same color since header shouldn't be selected
                     kwargs['text'] = item[i]
                 else:  # this is content
                     kwargs['text'] = getter(item, i)
@@ -211,7 +212,7 @@ class GridView(object):
 
             return {
                 'size_hint_y': None,
-                'height': '40dp',
+                'height': '30dp',
                 'cls_dicts': cls_dicts,
             }
 
@@ -234,7 +235,7 @@ class GridView(object):
                                    cls=CompositeListItem)
 
         # Layout
-        header_box = BoxLayout(orientation='vertical', size_hint=(1, None), height='40dp')
+        header_box = BoxLayout(orientation='vertical', size_hint=(1, None), height='30dp')
         header_view = ListView(adapter=header_adapter)
         header_box.add_widget(header_view)
 
@@ -770,7 +771,7 @@ class ElectrumGui(object):
                     _('Currency'), self.st_cur_combo,
                     _('Select which currency is used for quotes.')))
 
-            self.st_expert_cb = CheckBox(text=_('Expert mode'))
+            self.st_expert_cb = CheckBox()
             self.st_expert_cb.active = self.expert_mode
             hh =  _('In expert mode, your client will:') + '\n'  \
                 + _(' - Show change addresses in the Receive tab') + '\n'  \
@@ -790,10 +791,10 @@ class ElectrumGui(object):
                     _('Fee per kilobyte of transaction.') + ' ' \
                   + _('Recommended value') + ': ' + self.format_amount(50000)))
 
-            self.st_usechange_cb = CheckBox(text=_('Expert mode'))
+            self.st_usechange_cb = CheckBox()
             self.st_usechange_cb.active = self.wallet.use_change
             layout.add_widget(create_setting_widget(
-                    _('Expert mode'), self.st_usechange_cb,
+                    _('Use change addresses'), self.st_usechange_cb,
                     _('Using change addresses makes it more difficult for other people to track your transactions.'),
                     False))
 
@@ -1003,7 +1004,7 @@ class ElectrumGui(object):
                                     self.info_box(title=_('Information'), content_text=_("The following addresses were added") + ':\n' + '\n'.join(addrlist))
                                 if badkeys:
                                     self.error_box(title=_('Error'), content_text=_("The following inputs could not be imported") + ':\n'+ '\n'.join(badkeys))
-                                ####self.update_receive_tab()
+                                self.update_receive_tab()
                                 self.update_history_tab()
 
                                 if instance is not None:  # called via callback
@@ -1178,7 +1179,7 @@ class ElectrumGui(object):
                 self.wallet.num_zeros = nz
                 self.conf.set_key('num_zeros', nz, True)
                 self.update_history_tab()
-                ####self.update_receive_tab()
+                self.update_receive_tab()
 
             usechange_result = self.st_usechange_cb.active
             if self.wallet.use_change != usechange_result:
@@ -1201,7 +1202,7 @@ class ElectrumGui(object):
             if self.wallet.gap_limit != n:
                 r = self.wallet.change_gap_limit(n)
                 if r:
-                    ####self.update_receive_tab()
+                    self.update_receive_tab()
                     self.conf.set_key('gap_limit', self.wallet.gap_limit, True)
                 else:
                     self.error_box(content_text=_('Invalid value'))
@@ -1224,8 +1225,11 @@ class ElectrumGui(object):
             if need_restart:
                 self.info_box(content_text=_('Please restart Electrum to activate the new GUI settings'))
 
-            ######self.receive_tab_set_mode(self.st_expert_cb.active)
-
+            # from receive_tab_set_mode()
+            self.save_column_widths()
+            self.expert_mode = self.st_expert_cb.active
+            self.conf.set_key('classic_expert_mode', self.expert_mode, True)
+            self.update_receive_tab()
 
         button_cancel = Button(text=_("Cancel"), on_press=on_cancel_click)
         button_ok = Button(text=_("OK"), on_press=on_ok_click)
@@ -1549,7 +1553,7 @@ class ElectrumMainGui(ElectrumGui):
         self.update_status()
         if self.wallet.up_to_date or not self.wallet.interface.is_connected:
             self.update_history_tab()
-            #self.update_receive_tab()
+            self.update_receive_tab()
             #self.update_contacts_tab()
             #self.update_completions()
 
@@ -1810,7 +1814,29 @@ class ElectrumMainGui(ElectrumGui):
         pass
 
     def create_receive_tab(self):
-        return
+        self.receive_list = GridView(
+            headers=[_('Address'), _('Label'), _('Balance'), _('Tx')],
+            widths=[350, 250, 100, 100],
+            data=[],
+            getter=lambda item, i: item[i],
+        )
+
+        #l.setContextMenuPolicy(Qt.CustomContextMenu)
+        #l.customContextMenuRequested.connect(self.create_receive_menu)
+        #self.connect(l, SIGNAL('itemDoubleClicked(QTreeWidgetItem*, int)'), lambda a, b: self.address_label_clicked(a,b,l,0,1))
+        #self.connect(l, SIGNAL('itemChanged(QTreeWidgetItem*, int)'), lambda a,b: self.address_label_changed(a,b,l,0,1))
+        #self.connect(l, SIGNAL('currentItemChanged(QTreeWidgetItem*, QTreeWidgetItem*)'), lambda a,b: self.current_item_changed(a))
+
+        return self.receive_list.layout
+
+    def receive_tab_set_mode(self, i):
+        # NOTE: just used once so merged into the caller
+        pass
+
+    def save_column_widths(self):
+        # NOTE: not used since the widths are fixed now in Kivy GUI
+        pass
+
 
     # NEW
     def add_tab(self, widget, title):
@@ -1962,6 +1988,71 @@ class ElectrumMainGui(ElectrumGui):
                            content_text=_("Electrum was unable to parse your transaction"))
             return None
         return tx_dict
+
+    def update_receive_tab(self):
+        data = []
+        
+        if self.current_account is None:
+            account_items = self.wallet.accounts.items()
+        elif self.current_account != -1:
+            account_items = [(self.current_account, self.wallet.accounts.get(self.current_account))]
+        else:
+            account_items = []
+
+        for k, account in account_items:
+            name = account.get('name',str(k))
+            c,u = self.wallet.get_account_balance(k)
+            data = [(name, '', self.format_amount(c+u), '')]
+            
+            for is_change in ([0,1] if self.expert_mode else [0]):
+                if self.expert_mode:
+                    name = "Receiving" if not is_change else "Change"
+                    seq_item = (name, '', '', '')
+                    data.append(seq_item)
+                else:
+                    seq_item = data
+                is_red = False
+                gap = 0
+
+                for address in account[is_change]:
+                    h = self.wallet.history.get(address, [])
+            
+                    if h == []:
+                        gap += 1
+                        if gap > self.wallet.gap_limit:
+                            is_red = True
+                    else:
+                        gap = 0
+
+                    num_tx = '*' if h == ['*'] else "%d"%len(h)
+                    item = (address, self.wallet.labels.get(address, ''), '', num_tx)
+                    data.append(item)
+                    self.update_receive_item(item)
+
+        if self.wallet.imported_keys and (self.current_account is None or self.current_account == -1):
+            c,u = self.wallet.get_imported_balance()
+            data.append((_('Imported'), '', self.format_amount(c+u), ''))
+            for address in self.wallet.imported_keys.keys():
+                item = (address, self.wallet.labels.get(address, ''), '', '')
+                data.append(item)
+                self.update_receive_item(item)
+                
+        self.receive_list.content_adapter.data = data
+
+    def update_receive_item(self, item):
+        # TODO: can't port completely since there's no corresponding widget
+        #item.setFont(0, QFont(MONOSPACE_FONT))
+        self.run_hook('update_receive_item', item)
+                
+        #c, u = self.wallet.get_addr_balance(address)
+        #balance = self.format_amount(c + u)
+        #item.setData(2,0,balance)
+
+        #if self.expert_mode:
+        #    if address in self.wallet.frozen_addresses: 
+        #        item.setBackgroundColor(0, QColor('lightblue'))
+        #    elif address in self.wallet.prioritized_addresses: 
+        #        item.setBackgroundColor(0, QColor('lightgreen'))
 
 
 class ElectrumApp(App):
