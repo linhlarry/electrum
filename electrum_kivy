@@ -1455,7 +1455,7 @@ class ElectrumMainGui(ElectrumGui):
         #### set_language(self.conf.get('language'))
 
         self.funds_error = False
-        #### self.completions = QStringListModel()
+        self.completions = []
 
         #### self.column_widths = self.conf.get("column_widths", default_column_widths)  # NOTE: not used in Kivy now
 
@@ -1555,7 +1555,7 @@ class ElectrumMainGui(ElectrumGui):
             self.update_history_tab()
             self.update_receive_tab()
             self.update_contacts_tab()
-            #self.update_completions()
+            self.update_completions()
 
     def create_quote_text(self, btc_balance):
         quote_currency = self.conf.get("currency", "None")
@@ -1715,7 +1715,7 @@ class ElectrumMainGui(ElectrumGui):
                 l.append(label + '  <' + addr + '>')
 
         self.run_hook('update_completions', l)
-        self.completions.setStringList(l)
+        self.completions = l
 
     def protected(func):
         return lambda s, *args: s.do_protect(func, args)
@@ -1845,7 +1845,7 @@ class ElectrumMainGui(ElectrumGui):
                     self.wallet.add_contact(address)
                     self.update_contacts_tab()
                     self.update_history_tab()
-                    #self.update_completions()
+                    self.update_completions()
                     dialog.close()
                 else:
                     self.error_box(content_text=_('Invalid Address'))
