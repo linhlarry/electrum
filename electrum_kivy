@@ -1554,7 +1554,7 @@ class ElectrumMainGui(ElectrumGui):
         if self.wallet.up_to_date or not self.wallet.interface.is_connected:
             self.update_history_tab()
             self.update_receive_tab()
-            #self.update_contacts_tab()
+            self.update_contacts_tab()
             #self.update_completions()
 
     def create_quote_text(self, btc_balance):
@@ -1773,7 +1773,7 @@ class ElectrumMainGui(ElectrumGui):
             if status:
                 self.info_box(content_text=_('Payment sent.') + '\n' + msg)
                 self.do_clear()
-                #### TODO: self.update_contacts_tab()
+                self.update_contacts_tab()
             else:
                 self.error_box(content_text=msg)
         else:
@@ -1837,6 +1837,44 @@ class ElectrumMainGui(ElectrumGui):
         # NOTE: not used since the widths are fixed now in Kivy GUI
         pass
 
+    def create_contacts_tab(self):
+        def new_contact_dialog(instance):
+            def save_new_contact(instance):
+                address = unicode(text_input.text.strip())
+                if is_valid(address):
+                    self.wallet.add_contact(address)
+                    self.update_contacts_tab()
+                    self.update_history_tab()
+                    #self.update_completions()
+                    dialog.close()
+                else:
+                    self.error_box(content_text=_('Invalid Address'))
+
+            text_input = TextInput(multiline=False)
+            dialog = Dialog(title=_('New Contact'))
+            dialog.add_content(Label(text=_('Address') + ':'))
+            dialog.add_content(text_input)
+            dialog.add_button(Button(text=_('Cancel'), on_press=lambda instance: dialog.close()))
+            dialog.add_button(Button(text=_('OK'), on_press=save_new_contact))
+            dialog.open()
+
+        self.contacts_list = GridView(
+            headers=[_('Address'), _('Label'), _('Tx')],
+            widths=[350, 250, 200],
+            data=[],
+            getter=lambda item, i: item[i],
+        )
+
+        vbox = BoxLayout(orientation='vertical')
+        vbox.add_widget(self.contacts_list.layout)
+        vbox.add_widget(Button(text=_("New"), size_hint=(0.25, None), height='40dp', on_press=new_contact_dialog))
+
+        #l.setContextMenuPolicy(Qt.CustomContextMenu)
+        #l.customContextMenuRequested.connect(self.create_contact_menu)
+        #self.connect(l, SIGNAL('itemDoubleClicked(QTreeWidgetItem*, int)'), lambda a, b: self.address_label_clicked(a,b,l,0,1))
+        #self.connect(l, SIGNAL('itemChanged(QTreeWidgetItem*, int)'), lambda a,b: self.address_label_changed(a,b,l,0,1))
+
+        return vbox
 
     # NEW
     def add_tab(self, widget, title):
@@ -1856,10 +1894,9 @@ class ElectrumMainGui(ElectrumGui):
         self.add_tab(self.create_history_tab(), _('History'))
         self.add_tab(self.create_send_tab(), _('Send'))
         self.add_tab(self.create_receive_tab(), _('Receive'))
+        self.add_tab(self.create_contacts_tab(), _('Contacts'))
 
-        tab_contacts = TabbedPanelItem(text=_('Contacts'))
         tab_console = TabbedPanelItem(text=_('Console'))
-        self.tabs.add_widget(tab_contacts)
         self.tabs.add_widget(tab_console)
 
         self.layout.add_widget(self.tabs, 2)
@@ -1989,6 +2026,21 @@ class ElectrumMainGui(ElectrumGui):
             return None
         return tx_dict
 
+    def update_receive_item(self, item):
+        # TODO: can't port completely since there's no corresponding widget
+        #item.setFont(0, QFont(MONOSPACE_FONT))
+        self.run_hook('update_receive_item', item)
+                
+        #c, u = self.wallet.get_addr_balance(address)
+        #balance = self.format_amount(c + u)
+        #item.setData(2,0,balance)
+
+        #if self.expert_mode:
+        #    if address in self.wallet.frozen_addresses: 
+        #        item.setBackgroundColor(0, QColor('lightblue'))
+        #    elif address in self.wallet.prioritized_addresses: 
+        #        item.setBackgroundColor(0, QColor('lightgreen'))
+
     def update_receive_tab(self):
         data = []
         
@@ -2039,20 +2091,21 @@ class ElectrumMainGui(ElectrumGui):
                 
         self.receive_list.content_adapter.data = data
 
-    def update_receive_item(self, item):
-        # TODO: can't port completely since there's no corresponding widget
-        #item.setFont(0, QFont(MONOSPACE_FONT))
-        self.run_hook('update_receive_item', item)
-                
-        #c, u = self.wallet.get_addr_balance(address)
-        #balance = self.format_amount(c + u)
-        #item.setData(2,0,balance)
+    def update_contacts_tab(self):
+        data = []
+        for address in self.wallet.addressbook:
+            label = self.wallet.labels.get(address, '')
+            item = (address, label, "%d" % self.wallet.get_num_tx(address))
+            data.append(item)
+            #item.setFont(0, QFont(MONOSPACE_FONT))
+            ## 32 = label can be edited (bool)
+            #item.setData(0,32, True)
+            ## 33 = payto string
+            #item.setData(0,33, address)
 
-        #if self.expert_mode:
-        #    if address in self.wallet.frozen_addresses: 
-        #        item.setBackgroundColor(0, QColor('lightblue'))
-        #    elif address in self.wallet.prioritized_addresses: 
-        #        item.setBackgroundColor(0, QColor('lightgreen'))
+        self.run_hook('update_contacts_tab')
+
+        self.contacts_list.content_adapter.data = data
 
 
 class ElectrumApp(App):
