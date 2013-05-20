@@ -6,7 +6,7 @@ imp.load_module('electrum_gui', *imp.find_module('gui'))
 import kivy
 from kivy.config import Config
 Config.set('graphics', 'width', '800')
-Config.set('graphics', 'height', '400')
+Config.set('graphics', 'height', '600')
 
 import os
 import sys
@@ -36,6 +36,7 @@ from kivy.uix.treeview import TreeView, TreeViewLabel
 from kivy.uix.checkbox import CheckBox
 from kivy.uix.tabbedpanel import TabbedPanel, TabbedPanelItem
 from kivy.uix.floatlayout import FloatLayout
+from kivy.uix.filechooser import FileChooserListView
 from kivy.uix.listview import ListItemButton, ListItemLabel, CompositeListItem, \
     ListView
 from kivy.adapters.dictadapter import DictAdapter
@@ -56,10 +57,9 @@ import electrum_gui.exchange_rate as exchange_rate
 
 _ = lambda x: x
 
-DEBUG = True
+DEFAULT_PATH = '/tmp/'
 
-if DEBUG:
-    MIN_RELAY_TX_FEE = 0
+DEBUG = True
 
 
 class Dialog(object):
@@ -98,9 +98,6 @@ class Dialog(object):
         self.layout_buttons.add_widget(widget, index)
 
 
-DEFAULT_PATH = '/tmp/'
-
-from kivy.uix.filechooser import FileChooserListView
 class SaveDialog(Dialog):
     def __init__(self, title, path=DEFAULT_PATH, filename='', filters=[]):
         super(SaveDialog, self).__init__(title, size_hint=(0.9, 0.9))
@@ -254,6 +251,7 @@ class GridView(object):
 protocol_names = ['TCP', 'HTTP', 'SSL', 'HTTPS']
 protocol_letters = 'thsg'
 proxy_names = ['NONE', 'SOCKS4', 'SOCKS5', 'HTTP']
+proxy_keys = ['none', 'socks4', 'socks5', 'http']
 
 class NetworkDialog(object):
     def __init__(self, parent, instance):
@@ -265,7 +263,7 @@ class NetworkDialog(object):
         wallet = self.parent.wallet
         interface = wallet.interface
 
-        dialog = Dialog(title=_('Server'), size=('400dp', '600dp'))
+        dialog = Dialog(title=_('Server'), size=('400dp', '400dp'))
         # d.setMinimumSize(375, 20)
 
         if instance is not None:
@@ -279,7 +277,7 @@ class NetworkDialog(object):
             status = _("Please choose a server.") + "\n" + _("Select 'Cancel' if you are offline.")
             server = interface.server
 
-        dialog.add_content(Label(text=status))
+        dialog.add_content(Label(text=status, size_hint_y=None, height='40dp'))
 
         self.servers = interface.get_servers()
 
@@ -288,15 +286,13 @@ class NetworkDialog(object):
         self.server_host = TextInput(multiline=False)
         self.server_port = TextInput(multiline=False)
         # TODO: add icons/network.png
-        self.server_protocol = Spinner(
-            text='HTTP',
-            values=protocol_names,
-            size_hint=(None, None),
-            size=(100, 44),
-            ) #pos_hint={'center_x': .5, 'center_y': .5})
-        self.server_protocol.bind(text=self.on_change_protocol)
+        self.server_protocol = ComboBox(
+            key='h',
+            items=zip(protocol_letters, protocol_names),
+        )
+        self.server_protocol.bind(key=self.on_change_protocol)
 
-        vbox = BoxLayout(orientation='horizontal', size_hint=(1, None), height='40dp')
+        vbox = BoxLayout(orientation='horizontal', size_hint_y=None, height='30dp')
         vbox.add_widget(self.server_label)
         vbox.add_widget(self.server_protocol)
         vbox.add_widget(self.server_host)
@@ -332,36 +328,33 @@ class NetworkDialog(object):
         self.proxy_label = Label(text=_("Proxy") + ":")
         self.proxy_host = TextInput(multiline=False)
         self.proxy_port = TextInput(multiline=False)
-        self.proxy_mode = Spinner(
-            text='NONE',
-            values=proxy_names,
-            size_hint=(None, None),
-            size=(100, 44),
-            ) #pos_hint={'center_x': .5, 'center_y': .5})
-        vbox = BoxLayout(orientation='horizontal', size_hint=(1, None), height='40dp')
+        self.proxy_mode = ComboBox(
+            key='none',
+            items=zip(proxy_keys, proxy_names),
+        )
+        vbox = BoxLayout(orientation='horizontal', size_hint_y=None, height='30dp')
         vbox.add_widget(self.proxy_label)
         vbox.add_widget(self.proxy_mode)
         vbox.add_widget(self.proxy_host)
         vbox.add_widget(self.proxy_port)
         dialog.add_content(vbox)
 
-        def check_for_disable(instance, proxy_mode_name):
-            if proxy_mode_name != 'NONE':
+        def check_for_disable(instance, proxy_mode_key):
+            if proxy_mode_key != 'none':
                 self.proxy_host.readonly = False
                 self.proxy_port.readonly = False
             else:
                 self.proxy_host.readonly = True
                 self.proxy_port.readonly = True
 
-
-        check_for_disable(None, 'NONE')
-        self.proxy_mode.bind(text=check_for_disable)
+        check_for_disable(None, 'none')
+        self.proxy_mode.bind(key=check_for_disable)
 
         #if not wallet.config.is_modifiable('proxy'):
         #    for w in [proxy_host, proxy_port, proxy_mode]: w.setEnabled(False)
 
         proxy_config = interface.proxy if interface.proxy else { "mode":"none", "host":"localhost", "port":"8080"}
-        ####proxy_mode.setCurrentIndex(proxy_mode.findText(str(proxy_config.get("mode").upper())))
+        self.proxy_mode.key = proxy_config.get("mode")
         self.proxy_host.text = proxy_config.get("host")
         self.proxy_port.text = proxy_config.get("port")
 
@@ -373,16 +366,14 @@ class NetworkDialog(object):
 
         ########################
         # Auto cycle
-        layout_autocycle = BoxLayout(orientation='horizontal')
-        self.autocycle_cb = CheckBox(size_hint=(None, 1), width='40dp')
+        layout_autocycle = BoxLayout(orientation='horizontal', size_hint_y=None, height='30dp')
+        self.autocycle_cb = CheckBox(size_hint_x=None, width='20dp')
         self.autocycle_cb.active = conf.get('auto_cycle', True)
         if not conf.is_modifiable('auto_cycle'): self.autocycle_cb.active = False
         layout_autocycle.add_widget(self.autocycle_cb)
         layout_autocycle.add_widget(Label(text=_('Try random servers if disconnected')))
 
-        master_instance = instance
-
-        def on_cancel_click(instance):
+        def on_cancel_press(instance):
             dialog.close()
 
             # TODO: RuntimeError: threads can only be started once
@@ -398,15 +389,32 @@ class NetworkDialog(object):
             synchronizer = WalletSynchronizer(parent.wallet, conf)
             synchronizer.start()
 
-            if master_instance is None:  # called from ElectrumSetupGui
-                self.change_password_dialog()
+            if self.instance is None:  # in initial phase
+                self.parent.change_password_dialog()
 
-        def on_ok_click(instance):
+        def on_ok_press(instance):
             dialog.close()
-            # wallet.config.set_key("proxy", proxy, True)
+
+            ################
+            server = ':'.join([str(self.server_host.text),
+                               str(self.server_port.text),
+                               str(self.server_protocol.key)])
+
+            if self.proxy_mode.key != 'none':
+                proxy = { 'mode':str(self.proxy_mode.key),
+                          'host':str(self.proxy_host.text),
+                          'port':str(self.proxy_port.text) }
+            else:
+                proxy = None
+
+            conf = self.parent.conf
+            wallet = self.parent.wallet
+            interface = wallet.interface
+            conf.set_key("proxy", proxy, True)
             conf.set_key("server", server, True)
-            # interface.set_server(server, proxy)
+            interface.set_server(server, proxy)
             conf.set_key('auto_cycle', self.autocycle_cb.active, True)
+            ################
 
             # TODO: RuntimeError: threads can only be started once
             #interface.start(wait=False)
@@ -424,24 +432,21 @@ class NetworkDialog(object):
 
             if self.parent.action == 'restore':
                 try:
-                    keep_it = self.restore_wallet()
+                    keep_it = self.parent.restore_wallet()
                     wallet.fill_addressbook()
                 except:
                     import traceback
                     traceback.print_exc(file=sys.stdout)
-                    self.app.stop()
+                    self.parent.app.stop()
 
-                if not keep_it: self.app.stop()
+                if not keep_it: self.parent.app.stop()
 
-            if master_instance is None:  # called from ElectrumSetupGui
-                self.change_password_dialog()
-
-        button_cancel = Button(text=_("Cancel"), on_press=on_cancel_click)
-        button_ok = Button(text=_("OK"), on_press=on_ok_click)
+            if self.instance is None:  # in initial phase
+                self.parent.change_password_dialog()
 
         dialog.add_content(layout_autocycle)
-        dialog.add_button(button_cancel)
-        dialog.add_button(button_ok)
+        dialog.add_button(Button(text=_("Cancel"), on_press=on_cancel_press))
+        dialog.add_button(Button(text=_("OK"), on_press=on_ok_press))
         dialog.open()
 
     def init_servers_list(self):
@@ -457,12 +462,8 @@ class NetworkDialog(object):
             self.protocol = protocol
             self.init_servers_list()
 
-    def on_change_protocol(self, instance, protocol_name):
-        try:
-            index = protocol_names.index(protocol_name)
-        except ValueError:
-            index = 0
-        p = protocol_letters[index]
+    def on_change_protocol(self, instance, protocol_key):
+        p = protocol_key
         host = unicode(self.server_host.text)
         pp = self.servers.get(host)
         if p not in pp.keys():
@@ -508,213 +509,12 @@ class NetworkDialog(object):
         #    #else:
         #    #    self.server_protocol.model().setData(j, QVariant(33), Qt.UserRole-1)
 
-    def do_exec(self):
-        #if not self.exec_(): return
 
-        server = ':'.join([str(self.server_host.text),
-                           str(self.server_port.text),
-                           protocol_letters[protocol_names.index(self.server_protocol.text)] ])
+class SettingsDialog(object):
+    def __init__(self, parent, instance):
+        self.parent = parent
+        self.instance = instance
 
-        if self.proxy_mode.text != 'NONE':
-            proxy = { 'mode':str(self.proxy_mode.text).lower(),
-                      'host':str(self.proxy_host.text),
-                      'port':str(self.proxy_port.text) }
-        else:
-            proxy = None
-
-        conf = self.parent.conf
-        wallet = self.parent.wallet
-        interface = wallet.interface
-        #conf.set_key("proxy", proxy, True)
-        conf.set_key("server", server, True)
-        interface.set_server(server, proxy)
-        conf.set_key('auto_cycle', self.autocycle_cb.active, True)
-        return True
-
-
-class ElectrumGui(object):
-    def __init__(self, app):
-        self.app = app
-        self.wallet = app.wallet
-        self.conf = app.conf
-        self.action = None  # updated by self.restore_or_create()
-
-    def _message_box(self, title, content_text, button_text=_("OK"), callback=None):
-        def _callback(instance):
-            dialog.close()
-            if callback is not None and callable(callback):
-                apply(callback, [instance])
-
-        dialog = Dialog(title, size=('400dp', '200dp'))
-        label = Label(text=content_text)
-        label.bind(size=label.setter('text_size'))
-        dialog.add_content(label)
-        dialog.add_button(Button(text=button_text, on_press=_callback))
-        dialog.open()
-        return dialog
-
-    def info_box(self, title=_("Info"), content_text=_("More info"), button_text=_("OK"), callback=None):
-        return self._message_box(title, content_text, button_text, callback=callback)
-
-    def help_box(self, title=_("Help"), content_text=_("More help"), button_text=_("OK"), callback=None):
-        return self._message_box(title, content_text, button_text, callback=callback)
-
-    def error_box(self, title=_("Error"), content_text=_("Error info"), button_text=_("OK"), callback=None):
-        return self._message_box(title, content_text, button_text, callback=callback)
-
-    def exit_box(self, title=_("Error"), content_text=_("Error info"), button_text=_("OK")):
-        return self._message_box(title, content_text, button_text, callback=lambda instance: self.app.stop())
-
-    def change_password_dialog(self, instance=None):
-        """Can be called directly (instance is None)
-        or from a callback (instance is not None)"""
-        wallet = self.wallet
-        master_instance = instance
-
-        if not wallet.seed:
-            return self.exit_box(content_text=_('No seed'))
-
-        dialog = Dialog(title=_('Password'))
-
-        pw = TextInput(password=True)
-        new_pw = TextInput(password=True)
-        conf_pw = TextInput(password=True)
-
-        if instance:
-            msg = (_('Your wallet is encrypted. Use this dialog to change your password.') + '\n'\
-                   + _('To disable wallet encryption, enter an empty new password.')) \
-                   if wallet.use_encryption else _('Your wallet keys are not encrypted')
-        else:
-            msg = _("Please choose a password to encrypt your wallet keys.") + '\n'\
-                  + _("Leave these fields empty if you want to disable encryption.")
-        dialog.add_content(Label(text=msg))
-
-        grid = GridLayout(cols=2)
-        # grid.setSpacing(8)
-
-        if wallet.use_encryption:
-            grid.add_widget(Label(text=_('Password')))
-            grid.add_widget(pw)
-
-        grid.add_widget(Label(text=_('New Password')))
-        grid.add_widget(new_pw)
-
-        grid.add_widget(Label(text=_('Confirm Password')))
-        grid.add_widget(conf_pw)
-
-        dialog.add_content(grid)
-
-        def on_cancel_click(instance):
-            dialog.close()
-            # self.load_wallet()
-
-        def on_ok_click(instance):
-            password = unicode(pw.text) if wallet.use_encryption else None
-            new_password = unicode(new_pw.text)
-            new_password2 = unicode(conf_pw.text)
-
-            try:
-                seed = wallet.decode_seed(password)
-            except:
-                return self.error_box(content_text=_('Incorrect Password'))
-
-            if new_password != new_password2:
-                return self.error_box(content_text=_('Passwords do not match'))
-
-            # TODO: test carefully
-            try:
-                wallet.update_password(seed, password, new_password)
-            except:
-                return self.exit_box(content_text=_('Failed to update password'))
-            else:
-                self.info_box(title=_('Success'), content_text=_('Password was updated successfully'))
-
-            # TODO: review
-            # if instance:
-            #    icon = QIcon(":icons/lock.png") if wallet.use_encryption else QIcon(":icons/unlock.png")
-            #    instance.password_button.setIcon( icon )
-
-            dialog.close()
-            # self.load_wallet()
-            # TODO: can not load the main window here. Must restart.
-
-        button_cancel = Button(text=_("Cancel"), on_press=on_cancel_click)
-        button_ok = Button(text=_("OK"), on_press=on_ok_click)
-
-        dialog.add_button(button_cancel)
-        dialog.add_button(button_ok)
-
-        dialog.open()
-
-    def show_seed(self, seed, imported_keys, parent=None):
-        dialog = Dialog(title='Electrum' + ' - ' + _('Seed'), size=('400dp', '400dp'))
-
-        brainwallet = ' '.join(mnemonic.mn_encode(seed))
-
-        label1 = Label(text=_("Your wallet generation seed is") + ":")
-        label1.bind(size=label1.setter('text_size'))
-
-        if DEBUG:
-            seed_text = TextInput(text=brainwallet, size_hint=(1, 2), multiline=True, readonly=False)  # allow copy-paste
-        else:
-            seed_text = TextInput(text=brainwallet, size_hint=(1, 2), multiline=True, readonly=True)
-
-        # seed_text.setMaximumHeight(130)
-
-        msg2 = _("Please write down or memorize these 12 words (order is important).") + " " \
-              + _("This seed will allow you to recover your wallet in case of computer failure.") + " " \
-              + _("Your seed is also displayed as QR code, in case you want to transfer it to a mobile phone.") + "\n" \
-              + "[b]" + _("WARNING") + ":[/b] " + _("Never disclose your seed. Never type it on a website.")
-        if imported_keys:
-            msg2 += "[b]" + _("WARNING") + ":[/b] " + _("Your wallet contains imported keys. These keys cannot be recovered from seed.")
-        label2 = Label(text=msg2, size_hint=(1, 4), valign='top', markup=True)
-        label2.bind(size=label2.setter('text_size'))
-
-        # TODO: add this
-#         logo = QLabel()
-#         logo.setPixmap(QPixmap(":icons/seed.png").scaledToWidth(56))
-#         logo.setMaximumWidth(60)
-#
-#         qrw = QRCodeWidget(seed)
-#
-#         ok_button = QPushButton(_("OK"))
-#         ok_button.setDefault(True)
-#         ok_button.clicked.connect(dialog.accept)
-#
-#         grid = QGridLayout()
-#         #main_layout.addWidget(logo, 0, 0)
-#
-#         grid.addWidget(logo, 0, 0)
-#         grid.addWidget(label1, 0, 1)
-#
-#         grid.addWidget(seed_text, 1, 0, 1, 2)
-#
-#         grid.addWidget(qrw, 0, 2, 2, 1)
-#
-#         vbox = QVBoxLayout()
-#         vbox.addLayout(grid)
-#         vbox.addWidget(label2)
-
-        def on_ok_click(instance):
-            dialog.close()
-            # TODO: remove it?
-            #try:
-            #    self.verify_seed()  # just for ElectrumSetupGui
-            #except AttributeError:
-            #    pass
-            # TODO: re-add it
-            #if master_instance is None:  # called from ElectrumSetupGui
-            #    self.verify_seed()
-
-        button_ok = Button(text=_("OK"), on_press=on_ok_click)
-
-        dialog.add_content(label1)
-        dialog.add_content(seed_text)
-        dialog.add_content(label2)
-        dialog.add_button(button_ok)
-        dialog.open()
-
-    def settings_dialog(self, instance=None):
         dialog = Dialog(title=_('Electrum Settings'))
 
         def create_setting_widget(label, element, help, label_first=True):
@@ -728,13 +528,13 @@ class ElectrumGui(object):
                 grid.add_widget(element)
                 grid.add_widget(label)
             grid.add_widget(Button(text="?", size_hint_x=None, width='40dp',
-                                   on_press=lambda instance: self.help_box(content_text=help)))
+                                   on_press=lambda instance: self.parent.help_box(content_text=help)))
             return grid
 
         def create_display_tab():
             layout = BoxLayout(orientation='vertical')
 
-            self.st_nz_e = TextInput(text="%d" % self.wallet.num_zeros, multiline=False, size_hint_x=None, width='100dp')
+            self.st_nz_e = TextInput(text="%d" % self.parent.wallet.num_zeros, multiline=False, size_hint_x=None, width='100dp')
             layout.add_widget(create_setting_widget(
                     _('Display zeros'), self.st_nz_e,
                     _('Number of zeros displayed after the decimal point. For example, if this is set to 2, "1." will be displayed as "1.00"')))
@@ -744,11 +544,9 @@ class ElectrumGui(object):
             #    for w in [nz_e, nz_label]: w.setEnabled(False)
 
             self.st_lang_combo = ComboBox(
-                key=self.conf.get("language", ''),
+                key=self.parent.conf.get("language", ''),
                 items=languages.items(),
-                size_hint=(None, None),
-                size=(100, 44),
-                )
+            )
             layout.add_widget(create_setting_widget(
                     _('Language'), self.st_lang_combo,
                     _('Select which language is used in the GUI (after restart).')))
@@ -757,22 +555,20 @@ class ElectrumGui(object):
             #if not self.config.is_modifiable('language'):
             #    for w in [lang_combo, lang_label]: w.setEnabled(False)
 
-            currencies = self.exchanger.get_currencies()
+            currencies = self.parent.exchanger.get_currencies()
             currencies.insert(0, "None")
             currencies = zip(currencies, currencies)
 
             self.st_cur_combo = ComboBox(
-                key=self.conf.get("currency", "None"),
+                key=self.parent.conf.get("currency", "None"),
                 items=currencies,
-                size_hint=(None, None),
-                size=(100, 44),
-                )
+            )
             layout.add_widget(create_setting_widget(
                     _('Currency'), self.st_cur_combo,
                     _('Select which currency is used for quotes.')))
 
             self.st_expert_cb = CheckBox()
-            self.st_expert_cb.active = self.expert_mode
+            self.st_expert_cb.active = self.parent.expert_mode
             hh =  _('In expert mode, your client will:') + '\n'  \
                 + _(' - Show change addresses in the Receive tab') + '\n'  \
                 + _(' - Display the balance of each address') + '\n'  \
@@ -785,25 +581,25 @@ class ElectrumGui(object):
         def create_wallet_tab():
             layout = BoxLayout(orientation='vertical')
 
-            self.st_fee_e = TextInput(text=self.format_amount(self.wallet.fee).strip(), multiline=False, size_hint_x=None, width='100dp')
+            self.st_fee_e = TextInput(text=self.parent.format_amount(self.parent.wallet.fee).strip(), multiline=False, size_hint_x=None, width='100dp')
             layout.add_widget(create_setting_widget(
                     _('Transaction fee'), self.st_fee_e,
                     _('Fee per kilobyte of transaction.') + ' ' \
-                  + _('Recommended value') + ': ' + self.format_amount(50000)))
+                  + _('Recommended value') + ': ' + self.parent.format_amount(50000)))
 
             self.st_usechange_cb = CheckBox()
-            self.st_usechange_cb.active = self.wallet.use_change
+            self.st_usechange_cb.active = self.parent.wallet.use_change
             layout.add_widget(create_setting_widget(
                     _('Use change addresses'), self.st_usechange_cb,
                     _('Using change addresses makes it more difficult for other people to track your transactions.'),
                     False))
 
-            self.st_gap_e = TextInput(text="%d" % self.wallet.gap_limit, multiline=False, size_hint_x=None, width='100dp')
+            self.st_gap_e = TextInput(text="%d" % self.parent.wallet.gap_limit, multiline=False, size_hint_x=None, width='100dp')
 
             msg =  _('The gap limit is the maximal number of contiguous unused addresses in your sequence of receiving addresses.') + '\n' \
                   + _('You may increase it if you need more receiving addresses.') + '\n\n' \
-                  + _('Your current gap limit is') + ': %d'%self.wallet.gap_limit + '\n' \
-                  + _('Given the current status of your address sequence, the minimum gap limit you can use is:')+' ' + '%d'%self.wallet.min_acceptable_gap() + '\n\n' \
+                  + _('Your current gap limit is') + ': %d'%self.parent.wallet.gap_limit + '\n' \
+                  + _('Given the current status of your address sequence, the minimum gap limit you can use is:')+' ' + '%d'%self.parent.wallet.min_acceptable_gap() + '\n\n' \
                   + _('Warning') + ': ' \
                   + _('The gap limit parameter must be provided in order to recover your wallet from seed.') + ' ' \
                   + _('Do not modify it if you do not understand what you are doing, or if you expect to recover your wallet without knowing it!') + '\n\n'
@@ -817,11 +613,9 @@ class ElectrumGui(object):
 
             units = ['BTC', 'mBTC']
             self.st_unit_combo = ComboBox(
-                key=self.base_unit(),
+                key=self.parent.base_unit(),
                 items=zip(units, units),
-                size_hint=(None, None),
-                size=(100, 44),
-                )
+            )
 
             layout.add_widget(create_setting_widget(
                     _('Base unit'), self.st_unit_combo,
@@ -842,13 +636,13 @@ class ElectrumGui(object):
                     def save(instance):
                         path = dialog.file_chooser.path
                         filename = dialog.text_input.text.strip()
-                        labels = self.wallet.labels
+                        labels = self.parent.wallet.labels
                         try:
                             with open(os.path.join(path, filename), 'w+') as stream:
                                 json.dump(labels, stream)
-                            self.info_box(title="Labels exported", content_text=_("Your labels were exported to")+" '%s'" % str(filename))
+                            self.parent.info_box(title="Labels exported", content_text=_("Your labels were exported to")+" '%s'" % str(filename))
                         except (IOError, os.error), reason:
-                            self.error_box(title="Unable to export labels", content_text=_("Electrum was unable to export your labels.")+"\n" + str(reason))
+                            self.parent.error_box(title="Unable to export labels", content_text=_("Electrum was unable to export your labels.")+"\n" + str(reason))
                         dialog.close()
 
                     dialog = SaveDialog(title, path=path, filename=filename, filters=filters)
@@ -865,15 +659,15 @@ class ElectrumGui(object):
                         path = dialog.file_chooser.path
                         filename = dialog.text_input.text.strip()
 
-                        labels = self.wallet.labels
+                        labels = self.parent.wallet.labels
                         try:
                             with open(os.path.join(path, filename), 'r') as stream:
                                 for key, value in json.loads(stream.read()).items():
-                                    self.wallet.labels[key] = value
-                                self.wallet.save()
-                            self.info_box(title="Labels imported", content_text=_("Your labels were imported from")+" '%s'" % str(filename))
+                                    self.parent.wallet.labels[key] = value
+                                self.parent.wallet.save()
+                            self.parent.info_box(title="Labels imported", content_text=_("Your labels were imported from")+" '%s'" % str(filename))
                         except (IOError, os.error), reason:
-                            self.error_box(title="Unable to import labels", content_text=_("Electrum was unable to import your labels.")+"\n" + str(reason))
+                            self.parent.error_box(title="Unable to import labels", content_text=_("Electrum was unable to import your labels.")+"\n" + str(reason))
 
                         dialog.close()
 
@@ -891,7 +685,7 @@ class ElectrumGui(object):
                         path = dialog.file_chooser.path
                         filename = dialog.text_input.text.strip()
                         # extracted from gui_lite.csv_transaction
-                        wallet = self.wallet
+                        wallet = self.parent.wallet
                         try:
                             with open(os.path.join(path, filename), "w+") as stream:
                                 transaction = csv.writer(stream)
@@ -909,28 +703,28 @@ class ElectrumGui(object):
                                           time_string = "unknown"
                                     else:
                                         time_string = "pending"
-        
+
                                     if value is not None:
                                         value_string = format_satoshis(value, True, wallet.num_zeros)
                                     else:
                                         value_string = '--'
-        
+
                                     if fee is not None:
                                         fee_string = format_satoshis(fee, True, wallet.num_zeros)
                                     else:
                                         fee_string = '0'
-        
+
                                     if tx_hash:
                                         label, is_default_label = wallet.get_label(tx_hash)
                                     else:
                                       label = ""
-        
+
                                     balance_string = format_satoshis(balance, False, wallet.num_zeros)
                                     transaction.writerow([tx_hash, label, confirmations, value_string, fee_string, balance_string, time_string])
-                                self.info_box(title="CSV Export created", content_text="Your CSV export has been successfully created.")
+                                self.parent.info_box(title="CSV Export created", content_text="Your CSV export has been successfully created.")
                         except (IOError, os.error), reason:
                             export_error_label = _("Electrum was unable to produce a transaction export.")
-                            self.error_box(title="Unable to create csv", content_text=export_error_label + "\n" + str(reason))
+                            self.parent.error_box(title="Unable to create csv", content_text=export_error_label + "\n" + str(reason))
                         dialog.close()
 
                     dialog = SaveDialog(title, path=path, filename=filename, filters=filters)
@@ -953,14 +747,14 @@ class ElectrumGui(object):
                                     with open(os.path.join(path, filename), "w+") as csvfile:
                                         transaction = csv.writer(csvfile)
                                         transaction.writerow(["address", "private_key"])
-                                        for addr, pk in self.wallet.get_private_keys(self.wallet.addresses(True), password).items():
+                                        for addr, pk in self.parent.wallet.get_private_keys(self.parent.wallet.addresses(True), password).items():
                                             transaction.writerow(["%34s"%addr,pk])
-                                        self.info_box(content_text=_("Private keys exported."))
+                                        self.parent.info_box(content_text=_("Private keys exported."))
                                 except (IOError, os.error), reason:
                                     export_error_label = _("Electrum was unable to produce a private key-export.")
-                                    return self.info_box(title="Unable to create csv", content_text=export_error_label + "\n" + str(reason))
+                                    return self.parent.info_box(title="Unable to create csv", content_text=export_error_label + "\n" + str(reason))
                                 except BaseException, e:
-                                  return self.info_box(content_text=str(e))
+                                  return self.parent.info_box(content_text=str(e))
 
                                 dialog.close()
 
@@ -968,14 +762,14 @@ class ElectrumGui(object):
                             dialog.save_button.bind(on_press=save)
                             dialog.open()
 
-                        self.info_box(content_text="%s\n%s\n%s" % (
+                        self.parent.info_box(content_text="%s\n%s\n%s" % (
                                         _("WARNING: ALL your private keys are secret."),
                                         _("Exposing a single private key can compromise your entire wallet!"),
                                         _("In particular, DO NOT use 'redeem private key' services proposed by third parties.")),
                                       callback=show_save_dialog)
 
-                    if self.wallet.use_encryption:
-                        return self.password_dialog(post_ok=protected_save_dialog)
+                    if self.parent.wallet.use_encryption:
+                        return self.parent.password_required_dialog(post_ok=protected_save_dialog)
                     return protected_save_dialog()
 
                 elif instance.id == 'import_privkey':
@@ -992,20 +786,20 @@ class ElectrumGui(object):
                                 addrlist = []
                                 for key in text:
                                     try:
-                                        addr = self.wallet.import_key(key, password)
+                                        addr = self.parent.wallet.import_key(key, password)
                                     except BaseException as e:
                                         badkeys.append(key)
                                         continue
-                                    if not addr: 
+                                    if not addr:
                                         badkeys.append(key)
                                     else:
                                         addrlist.append(addr)
                                 if addrlist:
-                                    self.info_box(title=_('Information'), content_text=_("The following addresses were added") + ':\n' + '\n'.join(addrlist))
+                                    self.parent.info_box(title=_('Information'), content_text=_("The following addresses were added") + ':\n' + '\n'.join(addrlist))
                                 if badkeys:
-                                    self.error_box(title=_('Error'), content_text=_("The following inputs could not be imported") + ':\n'+ '\n'.join(badkeys))
-                                self.update_receive_tab()
-                                self.update_history_tab()
+                                    self.parent.error_box(title=_('Error'), content_text=_("The following inputs could not be imported") + ':\n'+ '\n'.join(badkeys))
+                                self.parent.update_receive_tab()
+                                self.parent.update_history_tab()
 
                                 if instance is not None:  # called via callback
                                     confirm_dialog.close()
@@ -1018,8 +812,8 @@ class ElectrumGui(object):
                             import_dialog.add_button(Button(text=_('Cancel'), on_press=do_cancel_privkey))
                             import_dialog.add_button(Button(text=_('Import'), on_press=do_import_privkey))
                             import_dialog.open()
-                
-                        if not self.wallet.imported_keys:
+
+                        if not self.parent.wallet.imported_keys:
                             confirm_dialog = Dialog(title=_('Warning'))
                             label = Label(text='[b]'+_('Warning') +':[/b]\n'+ _('Imported keys are not recoverable from seed.') + ' ' \
                                                     + _('If you ever need to restore your wallet from its seed, these keys will be lost.') + '\n\n' \
@@ -1033,15 +827,15 @@ class ElectrumGui(object):
                         else:
                             show_privkey_dialog()
 
-                    if self.wallet.use_encryption:
-                        return self.password_dialog(post_ok=protected_load_dialog)
+                    if self.parent.wallet.use_encryption:
+                        return self.parent.password_required_dialog(post_ok=protected_load_dialog)
                     return protected_load_dialog()
 
                 elif instance.id == 'show_pubkey':
                     dialog = Dialog(title=_("Master Public Key"))
 
                     # NOTE: Kivy TextInput doesn't wrap long text. So must handle it manually
-                    pub_key = self.wallet.get_master_public_key()
+                    pub_key = self.parent.wallet.get_master_public_key()
                     pub_key = '%s\n%s\n%s\n%s' % (pub_key[0:31], pub_key[32:63], pub_key[64:95], pub_key[96:127])
                     dialog.add_content(Label(text=_('Your Master Public Key is:')))
                     dialog.add_content(TextInput(text=pub_key, readonly=True))
@@ -1065,12 +859,12 @@ class ElectrumGui(object):
                             with open(os.path.join(path, filename), "r") as f:
                                 file_content = f.read()
                         except (ValueError, IOError, os.error), reason:
-                            self.error_box(title="Unable to read file or no transaction found",
+                            self.parent.error_box(title="Unable to read file or no transaction found",
                                            content_text=_("Electrum was unable to open your transaction file") + "\n" + str(reason))
-                
-                        tx_dict = self.tx_dict_from_text(file_content)
-                        if tx_dict: 
-                            self.create_process_transaction_window(tx_dict)
+
+                        tx_dict = self.parent.tx_dict_from_text(file_content)
+                        if tx_dict:
+                            self.parent.create_process_transaction_window(tx_dict)
 
                         dialog.close()
 
@@ -1083,24 +877,22 @@ class ElectrumGui(object):
                         text = transaction_input.text
                         if not text:
                             return
-                        tx_dict = self.tx_dict_from_text(text)
+                        tx_dict = self.parent.tx_dict_from_text(text)
                         if tx_dict:
-                            self.create_process_transaction_window(tx_dict)
+                            self.parent.create_process_transaction_window(tx_dict)
 
                     dialog = Dialog(title=_("Input raw transaction"))
-    
+
                     transaction_input = TextInput()
                     dialog.add_content(Label(text=_('Transaction:')))
                     dialog.add_content(transaction_input)
                     dialog.add_button(Button(text=_("Cancel"), on_press=lambda instance: dialog.close()))
                     dialog.add_button(Button(text=_("Load transaction"), on_press=load_transaction))
-    
+
                     dialog.open()
 
-                    return
-
                 # End of do_callback() #
- 
+
             # Layout of this tab
             layout = BoxLayout(orientation='vertical')
 
@@ -1141,31 +933,28 @@ class ElectrumGui(object):
 
             return layout
 
-
-        self.setting_tabs = TabbedPanel(do_default_tab=False)
-        self.add_setting_tab(create_display_tab(), _('Display'))
-        self.add_setting_tab(create_wallet_tab(), _('Wallet'))
-        self.add_setting_tab(create_import_export_tab(), _('Import/Export'))
+        # Add setting tabs
+        tabs = TabbedPanel(do_default_tab=False)
+        self.add_tab(tabs, create_display_tab(), _('Display'))
+        self.add_tab(tabs, create_wallet_tab(), _('Wallet'))
+        self.add_tab(tabs, create_import_export_tab(), _('Import/Export'))
         # no plugins for Kivy GUI
 
-        dialog.add_content(self.setting_tabs)
+        dialog.add_content(tabs)
 
-        self.run_hook('create_settings_tab')  # removed 2nd arg
+        self.parent.run_hook('create_settings_tab')  # removed 2nd arg
 
-        def on_cancel_click(instance):
-            dialog.close()
-
-        def on_ok_click(instance):
+        def on_ok_press(instance):
             dialog.close()
 
             ##########
             fee = unicode(self.st_fee_e.text)
             try:
-                fee = self.read_amount(fee)
+                fee = self.parent.read_amount(fee)
             except:
-                return self.error_box(content_text=_('Invalid value') +': %s'%fee)
+                return self.parent.error_box(content_text=_('Invalid value') +': %s'%fee)
 
-            self.wallet.set_fee(fee)
+            self.parent.wallet.set_fee(fee)
 
             ##########
             nz = unicode(self.st_nz_e.text)
@@ -1175,121 +964,285 @@ class ElectrumGui(object):
             except:
                 return self.error_box(content_text=_('Invalid value')+':%s'%nz)
 
-            if self.wallet.num_zeros != nz:
-                self.wallet.num_zeros = nz
-                self.conf.set_key('num_zeros', nz, True)
-                self.update_history_tab()
-                self.update_receive_tab()
+            if self.parent.wallet.num_zeros != nz:
+                self.parent.wallet.num_zeros = nz
+                self.parent.conf.set_key('num_zeros', nz, True)
+                self.parent.update_history_tab()
+                self.parent.update_receive_tab()
 
             usechange_result = self.st_usechange_cb.active
-            if self.wallet.use_change != usechange_result:
-                self.wallet.use_change = usechange_result
-                self.conf.set_key('use_change', self.wallet.use_change, True)
+            if self.parent.wallet.use_change != usechange_result:
+                self.parent.wallet.use_change = usechange_result
+                self.parent.conf.set_key('use_change', self.parent.wallet.use_change, True)
 
-            #import pdb; pdb.set_trace()
             unit_result = self.st_unit_combo.text
-            if self.base_unit() != unit_result:
-                self.decimal_point = 8 if unit_result == 'BTC' else 5
-                self.conf.set_key('decimal_point', self.decimal_point, True)
-                self.update_history_tab()
-                self.update_status()
+            if self.parent.base_unit() != unit_result:
+                self.parent.decimal_point = 8 if unit_result == 'BTC' else 5
+                self.parent.conf.set_key('decimal_point', self.parent.decimal_point, True)
+                self.parent.update_history_tab()
+                self.parent.update_status()
 
             try:
                 n = int(self.st_gap_e.text)
             except:
-                return self.error_box(content_text=_('Invalid value'))
+                return self.parent.error_box(content_text=_('Invalid value'))
 
-            if self.wallet.gap_limit != n:
-                r = self.wallet.change_gap_limit(n)
-                if r:
-                    self.update_receive_tab()
-                    self.conf.set_key('gap_limit', self.wallet.gap_limit, True)
+            if self.parent.wallet.gap_limit != n:
+                if self.parent.wallet.change_gap_limit(n):
+                    self.parent.update_receive_tab()
+                    self.parent.conf.set_key('gap_limit', self.parent.wallet.gap_limit, True)
                 else:
-                    self.error_box(content_text=_('Invalid value'))
+                    self.parent.error_box(content_text=_('Invalid value'))
                     # TODO: no return???
 
             need_restart = False
 
             lang_request = str(self.st_lang_combo.key)
-            if lang_request != self.conf.get('language'):
-                self.conf.set_key("language", lang_request, True)  # TODO: why can't save unicode
+            if lang_request != self.parent.conf.get('language'):
+                self.parent.conf.set_key("language", lang_request, True)  # TODO: why can't save unicode
                 need_restart = True
 
             cur_request = str(self.st_cur_combo.text)
-            if cur_request != self.conf.get('currency', "None"):
-                self.conf.set_key('currency', cur_request, True)  # TODO: why can't save unicode
-                self.update_wallet()
+            if cur_request != self.parent.conf.get('currency', "None"):
+                self.parent.conf.set_key('currency', cur_request, True)  # TODO: why can't save unicode
+                self.parent.update_wallet()
 
-            self.run_hook('close_settings_dialog')
+            self.parent.run_hook('close_settings_dialog')
 
             if need_restart:
-                self.info_box(content_text=_('Please restart Electrum to activate the new GUI settings'))
+                self.parent.info_box(content_text=_('Please restart Electrum to activate the new GUI settings'))
 
             # from receive_tab_set_mode()
-            self.save_column_widths()
-            self.expert_mode = self.st_expert_cb.active
-            self.conf.set_key('classic_expert_mode', self.expert_mode, True)
-            self.update_receive_tab()
+            self.parent.save_column_widths()
+            self.parent.expert_mode = self.st_expert_cb.active
+            self.parent.conf.set_key('classic_expert_mode', self.parent.expert_mode, True)
+            self.parent.update_receive_tab()
 
-        button_cancel = Button(text=_("Cancel"), on_press=on_cancel_click)
-        button_ok = Button(text=_("OK"), on_press=on_ok_click)
-
-        dialog.add_button(button_cancel)
-        dialog.add_button(button_ok)
-
+        dialog.add_button(Button(text=_("Cancel"), on_press=lambda instance: dialog.close()))
+        dialog.add_button(Button(text=_("OK"), on_press=on_ok_press))
         dialog.open()
 
-        return
+    def add_tab(self, tabs, widget, title):
+        tab = TabbedPanelItem(text=title)
+        tab.add_widget(widget)
+        tabs.add_widget(tab)
 
-    def network_dialog(self, instance=None):
-        # TODO: rewrite this function since the original code became class based rather than function based
+
+class ElectrumGui(object):
+    def __init__(self, app):
+        self.app = app
+        self.wallet = app.wallet
+        self.conf = app.conf
+        self.action = None  # updated by self.restore_or_create_dialog()
+
+    def _message_box(self, title, content_text, button_text=_("OK"), callback=None):
+        def _callback(instance):
+            dialog.close()
+            if callback is not None and callable(callback):
+                apply(callback, [instance])
+
+        dialog = Dialog(title, size=('400dp', '200dp'))
+        label = Label(text=content_text)
+        label.bind(size=label.setter('text_size'))
+        dialog.add_content(label)
+        dialog.add_button(Button(text=button_text, on_press=_callback))
+        dialog.open()
+
+        return dialog
+
+    def info_box(self, title=_("Info"), content_text=_("More info"), button_text=_("OK"), callback=None):
+        return self._message_box(title, content_text, button_text, callback=callback)
+
+    def help_box(self, title=_("Help"), content_text=_("More help"), button_text=_("OK"), callback=None):
+        return self._message_box(title, content_text, button_text, callback=callback)
+
+    def error_box(self, title=_("Error"), content_text=_("Error info"), button_text=_("OK"), callback=None):
+        return self._message_box(title, content_text, button_text, callback=callback)
+
+    def exit_box(self, title=_("Error"), content_text=_("Error info"), button_text=_("OK")):
+        return self._message_box(title, content_text, button_text, callback=lambda instance: self.app.stop())
+
+    def init_seed_dialog(self, password=None):  # renamed from show_seed()
+        """Can be called directly (password is None)
+        or from a password-protected callback (password is not None)"""
+
+        if not self.wallet.seed:
+            return self.error_box(content_text=_('No seed'))
+
+        if password is None:
+            seed = self.wallet.seed
+        else:
+            try:
+                seed = self.wallet.decode_seed(password)
+            except:
+                return self.error_box(content_text=_('Incorrect Password'))
+
+        dialog = Dialog(title='Electrum' + ' - ' + _('Seed'), size=('400dp', '400dp'))
+
+        brainwallet = ' '.join(mnemonic.mn_encode(seed))
+
+        label1 = Label(text=_("Your wallet generation seed is") + ":")
+        label1.bind(size=label1.setter('text_size'))
+
+        if DEBUG:
+            seed_text = TextInput(text=brainwallet, size_hint=(1, 2), multiline=True, readonly=False)  # allow copy-paste
+        else:
+            seed_text = TextInput(text=brainwallet, size_hint=(1, 2), multiline=True, readonly=True)
+
+        # seed_text.setMaximumHeight(130)
+
+        msg2 = _("Please write down or memorize these 12 words (order is important).") + " " \
+              + _("This seed will allow you to recover your wallet in case of computer failure.") + " " \
+              + _("Your seed is also displayed as QR code, in case you want to transfer it to a mobile phone.") + "\n" \
+              + "[b]" + _("WARNING") + ":[/b] " + _("Never disclose your seed. Never type it on a website.")
+        if self.wallet.imported_keys:
+            msg2 += "[b]" + _("WARNING") + ":[/b] " + _("Your wallet contains imported keys. These keys cannot be recovered from seed.")
+        label2 = Label(text=msg2, size_hint=(1, 4), valign='top', markup=True)
+        label2.bind(size=label2.setter('text_size'))
+
+        # TODO: add this
+#         logo = QLabel()
+#         logo.setPixmap(QPixmap(":icons/seed.png").scaledToWidth(56))
+#         logo.setMaximumWidth(60)
+#
+#         qrw = QRCodeWidget(seed)
+#
+#         ok_button = QPushButton(_("OK"))
+#         ok_button.setDefault(True)
+#         ok_button.clicked.connect(dialog.accept)
+#
+#         grid = QGridLayout()
+#         #main_layout.addWidget(logo, 0, 0)
+#
+#         grid.addWidget(logo, 0, 0)
+#         grid.addWidget(label1, 0, 1)
+#
+#         grid.addWidget(seed_text, 1, 0, 1, 2)
+#
+#         grid.addWidget(qrw, 0, 2, 2, 1)
+#
+#         vbox = QVBoxLayout()
+#         vbox.addLayout(grid)
+#         vbox.addWidget(label2)
+
+        def on_ok_press(instance):
+            dialog.close()
+            if password is None:  # in initial phase
+                self.verify_seed_dialog()
+
+        dialog.add_content(label1)
+        dialog.add_content(seed_text)
+        dialog.add_content(label2)
+        dialog.add_button(Button(text=_("OK"), on_press=on_ok_press))
+        dialog.open()
+
+    def change_network_dialog(self, instance=None):  # renamed from network_dialog()
         """Can be called directly (instance is None)
         or from a callback (instance is not None)"""
-        NetworkDialog(self, instance).do_exec()
+        NetworkDialog(self, instance)
+
+    def change_password_dialog(self, instance=None):
+        """Can be called directly (instance is None)
+        or from a callback (instance is not None)"""
+
+        wallet = self.wallet
+
+        if not wallet.seed:
+            return self.exit_box(content_text=_('No seed'))
+
+        dialog = Dialog(title=_('Password'))
+
+        pw = TextInput(password=True)
+        new_pw = TextInput(password=True)
+        conf_pw = TextInput(password=True)
+
+        if instance is not None:
+            msg = (_('Your wallet is encrypted. Use this dialog to change your password.') + '\n'\
+                   + _('To disable wallet encryption, enter an empty new password.')) \
+                   if wallet.use_encryption else _('Your wallet keys are not encrypted')
+        else:
+            msg = _("Please choose a password to encrypt your wallet keys.") + '\n'\
+                  + _("Leave these fields empty if you want to disable encryption.")
+        dialog.add_content(Label(text=msg))
+
+        grid = GridLayout(cols=2)
+        # grid.setSpacing(8)
+
+        if wallet.use_encryption:
+            grid.add_widget(Label(text=_('Password')))
+            grid.add_widget(pw)
+
+        grid.add_widget(Label(text=_('New Password')))
+        grid.add_widget(new_pw)
+
+        grid.add_widget(Label(text=_('Confirm Password')))
+        grid.add_widget(conf_pw)
+
+        dialog.add_content(grid)
+
+        def on_ok_press(_instance):
+            password = unicode(pw.text) if wallet.use_encryption else None
+            new_password = unicode(new_pw.text)
+            new_password2 = unicode(conf_pw.text)
+
+            try:
+                seed = wallet.decode_seed(password)
+            except:
+                return self.error_box(content_text=_('Incorrect Password'))
+
+            if new_password != new_password2:
+                return self.error_box(content_text=_('Passwords do not match'))
+
+            # TODO: test carefully
+            try:
+                wallet.update_password(seed, password, new_password)
+            except:
+                return self.exit_box(content_text=_('Failed to update password'))
+            else:
+                self.info_box(title=_('Success'), content_text=_('Password was updated successfully'))
+
+            # TODO: review
+            # if instance:
+            #    icon = QIcon(":icons/lock.png") if wallet.use_encryption else QIcon(":icons/unlock.png")
+            #    instance.password_button.setIcon( icon )
+
+            dialog.close()
+            if instance is None:  # in initial phase
+                self.load_wallet()
+
+        dialog.add_button(Button(text=_("Cancel"), on_press=lambda _instance: dialog.close()))
+        dialog.add_button(Button(text=_("OK"), on_press=on_ok_press))
+        dialog.open()
 
 
-class ElectrumSetupGui(ElectrumGui):
+class ElectrumInitGui(ElectrumGui):
     def __init__(self, app):
-        super(ElectrumSetupGui, self).__init__(app)
+        super(ElectrumInitGui, self).__init__(app)
 
-    def restore_or_create(self):
+    def restore_or_create_dialog(self):
+        def on_create_press(instance):
+            dialog.close()
+            self.action = 'create'
+            self.wallet.init_seed(None)
+            self.init_seed_dialog()
+
+        def on_restore_press(instance):
+            dialog.close()
+            self.action = 'restore'
+            self.verify_seed_dialog(is_restore=True)
+
         msg = _("Wallet file not found.") + "\n" + _("Do you want to create a new wallet, or to restore an existing one?")
-        dialog = Dialog(title=_('Message'))
-
         label = Label(text=msg, valign='middle')
         label.bind(size=label.setter('text_size'))
 
-        def on_create_click(instance):
-            self.action = 'create'
-            dialog.close()
-            self.wallet.init_seed(None)
-            self.show_seed(self.wallet.seed, self.wallet.imported_keys)
-
-        def on_restore_click(instance):
-            self.action = 'restore'
-            dialog.close()
-            self.seed_dialog(True)
-
-        def on_cancel_click(instance):
-            self.action = 'cancel'
-            dialog.close()
-            self.app.stop()
-
-        button_create = Button(text=_('Create'), on_press=on_create_click)
-        button_restore = Button(text=_('Restore'), on_press=on_restore_click)
-        button_cancel = Button(text=_('Cancel'), on_press=on_cancel_click)
-
+        dialog = Dialog(title=_('Message'))
         dialog.add_content(label)
-        dialog.add_button(button_create)
-        dialog.add_button(button_restore)
-        dialog.add_button(button_cancel)
-
+        dialog.add_button(Button(text=_('Create'), on_press=on_create_press))
+        dialog.add_button(Button(text=_('Restore'), on_press=on_restore_press))
+        dialog.add_button(Button(text=_('Cancel'), on_press=lambda instance: self.app.stop()))
         dialog.open()
 
-    def verify_seed(self):
-        return self.seed_dialog(False)
-
-    def seed_dialog(self, is_restore=True):
+    def verify_seed_dialog(self, is_restore=False):
         dialog = Dialog(title=_("Seed confirmation"))
 
         vbox = BoxLayout(orientation='vertical')
@@ -1305,8 +1258,7 @@ class ElectrumSetupGui(ElectrumGui):
         vbox.add_widget(label)
 
         seed_e = TextInput()
-        if DEBUG:
-            seed_e = TextInput(text=self.wallet.seed)  # auto fill
+        if DEBUG: seed_e = TextInput(text=self.wallet.seed)  # prefill
         # seed_e.setMaximumHeight(100)
         vbox.add_widget(seed_e)
 
@@ -1322,11 +1274,7 @@ class ElectrumSetupGui(ElectrumGui):
                                    on_press=lambda instance: self.help_box(content_text=msg)))
             vbox.add_widget(grid)
 
-        def on_cancel_click(instance):
-            dialog.close()
-            self.app.stop()
-
-        def on_ok_click(instance):
+        def on_ok_press(instance):
             dialog.close()
 
             seed = seed_e.text
@@ -1342,18 +1290,16 @@ class ElectrumSetupGui(ElectrumGui):
             if not seed:
                 return self.exit_box(content_text=_('No seed'))
 
-            if not is_restore:
-                if seed != self.wallet.seed:
+            wallet = self.wallet
+            if not is_restore:  # Create
+                if seed != wallet.seed:
                     return self.exit_box(content_text=_('Incorrect seed'))
-                self.wallet.save_seed()
-                return self.network_dialog()
-            else:
+                wallet.save_seed()
+            else:  # Restore
                 try:
                     gap = int(unicode(gap_e.text))
                 except:
                     return self.exit_box(content_text=_('Gap must be an integer'))
-
-                wallet = self.wallet
                 wallet.gap_limit = gap
                 if len(seed) == 128:
                     wallet.seed = ''
@@ -1362,15 +1308,11 @@ class ElectrumSetupGui(ElectrumGui):
                     wallet.init_seed(str(seed))
                     wallet.save_seed()
 
-                return self.network_dialog()
-
-        button_cancel = Button(text=_("Cancel"), on_press=on_cancel_click)
-        button_ok = Button(text=_("OK"), on_press=on_ok_click)
+            return self.change_network_dialog()
 
         dialog.add_content(vbox)
-        dialog.add_button(button_cancel)
-        dialog.add_button(button_ok)
-
+        dialog.add_button(Button(text=_("Cancel"), on_press=lambda instance: self.app.stop()))
+        dialog.add_button(Button(text=_("OK"), on_press=on_ok_press))
         dialog.open()
 
     def restore_wallet(self):
@@ -1408,24 +1350,13 @@ class ElectrumSetupGui(ElectrumGui):
         synchronizer.start()
 
         url = None  # TODO:
-        # self.wallet.save()
         self.main(url)
-        # self.wallet.save()
-
-        #verifier.stop()
-        #synchronizer.stop()
-        #interface.stop()
-
-        # we use daemon threads, their termination is enforced.
-        # this sleep command gives them time to terminate cleanly.
-        time.sleep(0.1)
 
     def main(self, url):  # TODO:
         main_gui = ElectrumMainGui(self.app)
         main_gui.show()
         main_gui.connect_slots()
         main_gui.update_wallet()
-
 
 
 class ElectrumMainGui(ElectrumGui):
@@ -1584,6 +1515,7 @@ class ElectrumMainGui(ElectrumGui):
                 time_str = 'pending'
                 # icon = QIcon(":icons/unconfirmed.png")
             elif conf < 6:
+                time_str = ''  # add new to fix error when conf < 0
                 # icon = QIcon(":icons/clock%d.png"%conf)
                 pass
             else:
@@ -1665,30 +1597,30 @@ class ElectrumMainGui(ElectrumGui):
 
     def create_send_tab(self):
         def add_row(label, input, help):
-            hbox = BoxLayout(orientation='horizontal', size_hint_y=None, height='40dp')
+            hbox = BoxLayout(orientation='horizontal')  #, size_hint_y=None, height='30dp')
             hbox.add_widget(Label(text=label))
             hbox.add_widget(input)
-            hbox.add_widget(Button(text="?", size_hint_x=None, width='40dp',
+            hbox.add_widget(Button(text="?", size_hint_x=None, width='30dp',
                                    on_press=lambda instance: self.help_box(content_text=help)))
             vbox.add_widget(hbox)
 
-        vbox = BoxLayout(orientation='vertical', size_hint=(1, 0.5))
+        vbox = BoxLayout(orientation='vertical', size_hint_y=None, height='160dp')
 
         self.payto_e = TextInput(multiline=False)
-        if DEBUG: self.payto_e.text = '13iB6JbHqJ9efgHTbDcRqewUZeCxywvUxN'
+        #if DEBUG: self.payto_e.text = '13iB6JbHqJ9efgHTbDcRqewUZeCxywvUxN'
         add_row(_('Pay to'), self.payto_e, _('Recipient of the funds.') + '\n\n' + _('You may enter a Bitcoin address, a label from your list of contacts (a list of completions will be proposed), or an alias (email-like address that forwards to a Bitcoin address)'))
 
         self.message_e = TextInput(multiline=False)
         add_row(_('Description'), self.message_e, _('Description of the transaction (not mandatory).') + '\n\n' + _('The description is not sent to the recipient of the funds. It is stored in your wallet file, and displayed in the \'History\' tab.'))
 
         self.amount_e = TextInput(multiline=False)
-        if DEBUG: self.amount_e.text = '0.01'
+        #if DEBUG: self.amount_e.text = '0.001'
         add_row(_('Amount'), self.amount_e, _('Amount to be sent.') + '\n\n' \
                     + _('The amount will be displayed in red if you do not have enough funds in your wallet. Note that if you have frozen some of your addresses, the available funds will be lower than your total balance.') \
                     + '\n\n' + _('Keyboard shortcut: type "!" to send all your coins.'))
 
         self.fee_e = TextInput(multiline=False)
-        if DEBUG: self.fee_e.text = '0.0001'
+        #if DEBUG: self.fee_e.text = '0.0001'
         add_row(_('Fee'), self.fee_e, _('Bitcoin transactions are in general not free. A transaction fee is paid by the sender of the funds.') + '\n\n'\
                     + _('The amount of fee can be decided freely by the sender. However, transactions with low fees take more time to be processed.') + '\n\n'\
                     + _('A suggested fee is automatically added to this field. You may override it. The suggested fee increases with the size of the transaction.'))
@@ -1727,7 +1659,7 @@ class ElectrumMainGui(ElectrumGui):
             apply(func, args)
 
         if self.wallet.use_encryption:
-            return self.password_dialog(post_ok=run_func)
+            return self.password_required_dialog(post_ok=run_func)
 
         return run_func()
 
@@ -1877,53 +1809,30 @@ class ElectrumMainGui(ElectrumGui):
         return vbox
 
     # NEW
-    def add_tab(self, widget, title):
+    def add_tab(self, tabs, widget, title):
         tab = TabbedPanelItem(text=title)
         tab.add_widget(widget)
-        self.tabs.add_widget(tab)
-
-    # NEW
-    def add_setting_tab(self, widget, title):
-        tab = TabbedPanelItem(text=title)
-        tab.add_widget(widget)
-        self.setting_tabs.add_widget(tab)
+        tabs.add_widget(tab)
 
     # NEW: extracted from self.__init__()
     def show(self):
-        self.tabs = TabbedPanel(do_default_tab=False)
-        self.add_tab(self.create_history_tab(), _('History'))
-        self.add_tab(self.create_send_tab(), _('Send'))
-        self.add_tab(self.create_receive_tab(), _('Receive'))
-        self.add_tab(self.create_contacts_tab(), _('Contacts'))
+        tabs = TabbedPanel(do_default_tab=False)
+        self.add_tab(tabs, self.create_history_tab(), _('History'))
+        self.add_tab(tabs, self.create_send_tab(), _('Send'))
+        self.add_tab(tabs, self.create_receive_tab(), _('Receive'))
+        self.add_tab(tabs, self.create_contacts_tab(), _('Contacts'))
 
         tab_console = TabbedPanelItem(text=_('Console'))
-        self.tabs.add_widget(tab_console)
+        tabs.add_widget(tab_console)
 
-        self.layout.add_widget(self.tabs, 2)
+        self.layout.add_widget(tabs, 2)
 
         title = 'Electrum ' + self.wallet.electrum_version + '  -  ' + self.conf.path
         if not self.wallet.seed: title += ' [%s]' % (_('seedless'))
 
-        self.app.title = title  # TODO: why not update?
+        self.app.title = title  # TODO: why not actually update?
 
-        # TODO: no need shortcut for Kivy
-
-        # [(u'26f5c788384cd5bf4b324d1bc89d64dc74c2fb84de96376ce555e9951ad29d0e',
-        #   2533,
-        #   False,
-        #   1000000,
-        #   25599980000,
-        #   1000000,
-        #   1366219927),
-        #  (u'a53001c733c7e2fd29daadcb3f2e3cb3a5d48721f139fdcd8a4f10f929a87c5d',
-        #   855,
-        #   False,
-        #   111111110,
-        #   711970423,
-        #   112111110,
-        #   1367129298)]
-
-        # TODO: add shortcuts
+        # NOTE: no need shortcut for Kivy GUI
 
     # NEW
     def create_status_bar(self):
@@ -1950,68 +1859,47 @@ class ElectrumMainGui(ElectrumGui):
             self.password_button = Button(text=_("Password"), on_press=self.change_password_dialog)
             sb.add_button(self.password_button)
 
-        self.password_pref = Button(text=_("Preferences"), on_press=self.settings_dialog)
+        self.password_pref = Button(text=_("Preferences"), on_press=self.show_settings_dialog)
         sb.add_button(self.password_pref)
 
         if self.wallet.seed:
-            self.seed_button = Button(text=_("Seed"), on_press=self.seed_dialog)
+            self.seed_button = Button(text=_("Seed"), on_press=self.protected_seed_dialog)
             sb.add_button(self.seed_button)
 
-        self.status_button = Button(text=_("Network"), on_press=self.network_dialog)
+        self.status_button = Button(text=_("Network"), on_press=self.change_network_dialog)
         sb.add_button(self.status_button)
 
         self.run_hook('create_status_bar', (sb,))
 
         self.layout.add_widget(sb.layout, 1)
 
-    def password_dialog(self, instance=None, post_ok=None):
-        """Can be called directly or from callback"""
-        wallet = self.wallet
-
-        dialog = Dialog(title=_('Password'))
-
-        pw = TextInput(password=True)
-
-        grid = GridLayout(cols=2)
-
-        grid.add_widget(Label(text=_('Please enter password')))
-        grid.add_widget(pw)
-
-        dialog.add_content(grid)
-
-        def on_cancel_click(instance):
+    # TODO: review
+    #def password_required_dialog(self, instance=None, post_ok=None):  # renamed from password_dialog()
+    def password_required_dialog(self, post_ok=None):  # renamed from password_dialog()
+        def on_ok_press(instance):
             dialog.close()
-            # self.load_wallet()
 
-        def on_ok_click(instance):
-            password = unicode(pw.text) if wallet.use_encryption else None
+            password = unicode(pw.text) if self.wallet.use_encryption else None
 
             try:
-                seed = wallet.decode_seed(password)
+                seed = self.wallet.decode_seed(password)
             except:
                 return self.error_box(content_text=_('Incorrect Password'))
-
-            dialog.close()
-
-            # TODO: re-add it
-            #self.show_seed(seed, self.wallet.imported_keys, self)
 
             if post_ok is not None:
                 post_ok(password)
 
-        button_cancel = Button(text=_("Cancel"), on_press=on_cancel_click)
-        button_ok = Button(text=_("OK"), on_press=on_ok_click)
-
-        dialog.add_button(button_cancel)
-        dialog.add_button(button_ok)
-
+        pw = TextInput(password=True)
+        dialog = Dialog(title=_('Password'))
+        dialog.add_content(Label(text=_('Please enter password')))
+        dialog.add_content(pw)
+        dialog.add_button(Button(text=_("Cancel"), on_press=lambda instance: dialog.close()))
+        dialog.add_button(Button(text=_("OK"), on_press=on_ok_press))
         dialog.open()
 
     @protected
-    def seed_dialog(self, instance):
-        if not self.wallet.seed:
-            return self.error_box(content_text=_('No seed'))
-        return self.show_seed(self.wallet.seed, self.wallet.imported_keys)
+    def protected_seed_dialog(self, instance, password):  # renamed from show_seed_dialog()
+        return self.init_seed_dialog(password)
 
     def tx_dict_from_text(self, txt):
         try:
@@ -2030,20 +1918,20 @@ class ElectrumMainGui(ElectrumGui):
         # TODO: can't port completely since there's no corresponding widget
         #item.setFont(0, QFont(MONOSPACE_FONT))
         self.run_hook('update_receive_item', item)
-                
+
         #c, u = self.wallet.get_addr_balance(address)
         #balance = self.format_amount(c + u)
         #item.setData(2,0,balance)
 
         #if self.expert_mode:
-        #    if address in self.wallet.frozen_addresses: 
+        #    if address in self.wallet.frozen_addresses:
         #        item.setBackgroundColor(0, QColor('lightblue'))
-        #    elif address in self.wallet.prioritized_addresses: 
+        #    elif address in self.wallet.prioritized_addresses:
         #        item.setBackgroundColor(0, QColor('lightgreen'))
 
     def update_receive_tab(self):
         data = []
-        
+
         if self.current_account is None:
             account_items = self.wallet.accounts.items()
         elif self.current_account != -1:
@@ -2055,7 +1943,7 @@ class ElectrumMainGui(ElectrumGui):
             name = account.get('name',str(k))
             c,u = self.wallet.get_account_balance(k)
             data = [(name, '', self.format_amount(c+u), '')]
-            
+
             for is_change in ([0,1] if self.expert_mode else [0]):
                 if self.expert_mode:
                     name = "Receiving" if not is_change else "Change"
@@ -2068,7 +1956,7 @@ class ElectrumMainGui(ElectrumGui):
 
                 for address in account[is_change]:
                     h = self.wallet.history.get(address, [])
-            
+
                     if h == []:
                         gap += 1
                         if gap > self.wallet.gap_limit:
@@ -2088,7 +1976,7 @@ class ElectrumMainGui(ElectrumGui):
                 item = (address, self.wallet.labels.get(address, ''), '', '')
                 data.append(item)
                 self.update_receive_item(item)
-                
+
         self.receive_list.content_adapter.data = data
 
     def update_contacts_tab(self):
@@ -2107,6 +1995,8 @@ class ElectrumMainGui(ElectrumGui):
 
         self.contacts_list.content_adapter.data = data
 
+    def show_settings_dialog(self, instance):
+        SettingsDialog(self, instance)
 
 class ElectrumApp(App):
     title = _('Electrum App')
@@ -2120,13 +2010,9 @@ class ElectrumApp(App):
         return BoxLayout()
 
     def on_start(self):
-        gui = ElectrumSetupGui(app=self)
+        gui = ElectrumInitGui(app=self)
         if not gui.conf.wallet_file_exists:
-            gui.restore_or_create()
-            # gui.show_seed('12345678', False)
-            # gui.verify_seed()
-            # gui.network_dialog()
-            # gui.password_dialog()
+            gui.restore_or_create_dialog()
         else:
             gui.load_wallet()
 
