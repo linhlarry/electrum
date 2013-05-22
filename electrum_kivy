@@ -42,12 +42,12 @@ from kivy.uix.listview import ListItemButton, ListItemLabel, CompositeListItem, 
 from kivy.adapters.dictadapter import DictAdapter
 from kivy.adapters.listadapter import ListAdapter
 
-from electrum import mnemonic, util
+from electrum import mnemonic, util, bitcoin
 from electrum.interface import DEFAULT_PORTS, Interface
 from electrum.simple_config import SimpleConfig
 from electrum.wallet import Wallet, WalletSynchronizer
 from electrum.util import set_verbosity, format_satoshis, print_error, print_msg
-from electrum.commands import known_commands
+from electrum.commands import known_commands, Commands
 from electrum.verifier import WalletVerifier
 from electrum.bitcoin import is_valid, MIN_RELAY_TX_FEE
 
@@ -1808,6 +1808,26 @@ class ElectrumMainGui(ElectrumGui):
 
         return vbox
 
+    def create_console_tab(self):
+        from electrum_gui.kivy_console import Console
+        self.console = console = Console()
+        self.console.history = self.conf.get("console-history",[])
+        self.console.history_index = len(self.console.history)
+
+        console.updateNamespace({'wallet' : self.wallet, 'interface' : self.wallet.interface, 'gui':self})
+        console.updateNamespace({'util' : util, 'bitcoin':bitcoin})
+
+        c = Commands(self.wallet, self.wallet.interface, lambda: self.console.set_json(True))
+        methods = {}
+        def mkfunc(f, method):
+            return lambda *args: apply( f, (method, args, self.password_required_dialog ))
+        for m in dir(c):
+            if m[0]=='_' or m=='wallet' or m == 'interface': continue
+            methods[m] = mkfunc(c._run, m)
+            
+        console.updateNamespace(methods)
+        return console
+
     # NEW
     def add_tab(self, tabs, widget, title):
         tab = TabbedPanelItem(text=title)
@@ -1821,10 +1841,7 @@ class ElectrumMainGui(ElectrumGui):
         self.add_tab(tabs, self.create_send_tab(), _('Send'))
         self.add_tab(tabs, self.create_receive_tab(), _('Receive'))
         self.add_tab(tabs, self.create_contacts_tab(), _('Contacts'))
-
-        tab_console = TabbedPanelItem(text=_('Console'))
-        tabs.add_widget(tab_console)
-
+        self.add_tab(tabs, self.create_console_tab(), _('Console'))
         self.layout.add_widget(tabs, 2)
 
         title = 'Electrum ' + self.wallet.electrum_version + '  -  ' + self.conf.path
@@ -1879,7 +1896,8 @@ class ElectrumMainGui(ElectrumGui):
         def on_ok_press(instance):
             dialog.close()
 
-            password = unicode(pw.text) if self.wallet.use_encryption else None
+            password = unicode(pw.text) if self.wallet.use_encryption else ''
+            print password
 
             try:
                 seed = self.wallet.decode_seed(password)
