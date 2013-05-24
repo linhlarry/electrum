@@ -733,7 +733,7 @@ class SettingsDialog(object):
 
                 elif instance.id == 'export_privkey':
                     # NOTE: equivalent to @protected
-                    def protected_save_dialog(password=None):
+                    def protected_save_dialog(instance=None, password=None):
                         def show_save_dialog(instance):
                             title = _("Select file to export your private keys to")
                             path = DEFAULT_PATH
@@ -774,7 +774,7 @@ class SettingsDialog(object):
 
                 elif instance.id == 'import_privkey':
                     # NOTE: equivalent to @protected
-                    def protected_load_dialog(password=None):
+                    def protected_load_dialog(instance=None, password=None):
                         def show_privkey_dialog(instance=None):
                             def do_cancel_privkey(instance):
                                 import_dialog.close()
@@ -1062,7 +1062,7 @@ class ElectrumGui(object):
     def exit_box(self, title=_("Error"), content_text=_("Error info"), button_text=_("OK")):
         return self._message_box(title, content_text, button_text, callback=lambda instance: self.app.stop())
 
-    def init_seed_dialog(self, password=None):  # renamed from show_seed()
+    def init_seed_dialog(self, instance=None, password=None):  # renamed from show_seed()
         """Can be called directly (password is None)
         or from a password-protected callback (password is not None)"""
 
@@ -1125,9 +1125,9 @@ class ElectrumGui(object):
 #         vbox.addLayout(grid)
 #         vbox.addWidget(label2)
 
-        def on_ok_press(instance):
+        def on_ok_press(_instance):
             dialog.close()
-            if password is None:  # in initial phase
+            if instance is None:  # in initial phase
                 self.verify_seed_dialog()
 
         dialog.add_content(label1)
@@ -1890,14 +1890,11 @@ class ElectrumMainGui(ElectrumGui):
 
         self.layout.add_widget(sb.layout, 1)
 
-    # TODO: review
-    #def password_required_dialog(self, instance=None, post_ok=None):  # renamed from password_dialog()
     def password_required_dialog(self, post_ok=None):  # renamed from password_dialog()
         def on_ok_press(instance):
             dialog.close()
 
-            password = unicode(pw.text) if self.wallet.use_encryption else ''
-            print password
+            password = unicode(pw.text)
 
             try:
                 seed = self.wallet.decode_seed(password)
@@ -1905,7 +1902,7 @@ class ElectrumMainGui(ElectrumGui):
                 return self.error_box(content_text=_('Incorrect Password'))
 
             if post_ok is not None:
-                post_ok(password)
+                post_ok(instance, password)
 
         pw = TextInput(password=True)
         dialog = Dialog(title=_('Password'))
@@ -1917,7 +1914,7 @@ class ElectrumMainGui(ElectrumGui):
 
     @protected
     def protected_seed_dialog(self, instance, password):  # renamed from show_seed_dialog()
-        return self.init_seed_dialog(password)
+        return self.init_seed_dialog(instance, password)
 
     def tx_dict_from_text(self, txt):
         try:
