@@ -213,7 +213,12 @@ a SimpleConfig instance then reads the wallet file.
         f = open(self.path,"w")
         f.write( s )
         f.close()
-        if self.get('gui') != 'android':
-            import stat
-            os.chmod(self.path,stat.S_IREAD | stat.S_IWRITE)
+
+        # NOTE: simple fix but very important since it eliminates an
+        # annoying bug: always crash on real device. Still not know 
+        # the exact reason. But the program run well and doesn't generate mystery error:
+        # "/mnt/sdcard/com.kivy.electrum/.electrum/wallet.dat Operation not permitted"
+        #if self.get('gui') != 'android':
+        #    import stat
+        #    os.chmod(self.path,stat.S_IREAD | stat.S_IWRITE)
 
