@@ -1654,7 +1654,7 @@ class ElectrumMainGui(ElectrumGui):
 
     def do_protect(self, func, args):
         _args = args
-        def run_func(password=None):
+        def run_func(instance=None, password=None):
             args = (self,) + _args + (password,)
             apply(func, args)
 
