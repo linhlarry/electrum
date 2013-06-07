@@ -20,6 +20,7 @@ import sys, time, datetime, re, threading
 from i18n import _, set_language
 from electrum.util import print_error, print_msg
 import os.path, json, ast, traceback
+import shutil
 
 
 try:
@@ -277,7 +278,10 @@ class ElectrumWindow(QMainWindow):
         if not self.wallet.seed: title += ' [%s]' % (_('seedless'))
         self.setWindowTitle( title )
 
+        self.init_menubar()
+
         QShortcut(QKeySequence("Ctrl+W"), self, self.close)
+        QShortcut(QKeySequence("Ctrl+R"), self, self.update_wallet)
         QShortcut(QKeySequence("Ctrl+Q"), self, self.close)
         QShortcut(QKeySequence("Ctrl+PgUp"), self, lambda: tabs.setCurrentIndex( (tabs.currentIndex() - 1 )%tabs.count() ))
         QShortcut(QKeySequence("Ctrl+PgDown"), self, lambda: tabs.setCurrentIndex( (tabs.currentIndex() + 1 )%tabs.count() ))
@@ -306,6 +310,112 @@ class ElectrumWindow(QMainWindow):
         # plugins that need to change the GUI do it here
         self.run_hook('init_gui')
 
+
+    def select_wallet_file(self):
+        wallet_folder = self.wallet.config.path
+        re.sub("(\/\w*.dat)$", "", wallet_folder)
+        file_name = QFileDialog.getOpenFileName(self, "Select your wallet file", wallet_folder, "*.dat")
+        if not file_name:
+            return
+        else:
+          self.load_wallet(file_name)
+
+
+    def init_menubar(self):
+        menubar = QMenuBar()
+
+        electrum_menu = menubar.addMenu(_("&File"))
+        open_wallet_action = electrum_menu.addAction(_("Open wallet"))
+        open_wallet_action.triggered.connect(self.select_wallet_file)
+
+        preferences_name = _("Preferences")
+        if sys.platform == 'darwin':
+            preferences_name = _("Electrum preferences") # Settings / Preferences are all reserved keywords in OSX using this as work around
+
+        preferences_menu = electrum_menu.addAction(preferences_name)
+        preferences_menu.triggered.connect(self.settings_dialog)
+        electrum_menu.addSeparator()
+
+        raw_transaction_menu = electrum_menu.addMenu(_("&Load raw transaction"))
+
+        raw_transaction_file = raw_transaction_menu.addAction(_("&From file"))
+        raw_transaction_file.triggered.connect(self.do_process_from_file)
+
+        raw_transaction_text = raw_transaction_menu.addAction(_("&From text"))
+        raw_transaction_text.triggered.connect(self.do_process_from_text)
+
+        electrum_menu.addSeparator()
+        quit_item = electrum_menu.addAction(_("&Close"))
+        quit_item.triggered.connect(self.close)
+
+        wallet_menu = menubar.addMenu(_("&Wallet"))
+        wallet_backup = wallet_menu.addAction(_("&Create backup"))
+        wallet_backup.triggered.connect(backup_wallet)
+
+        show_menu = wallet_menu.addMenu(_("Show"))
+
+        if self.wallet.seed:
+            show_seed = show_menu.addAction(_("&Seed"))
+            show_seed.triggered.connect(self.show_seed_dialog)
+
+        show_mpk = show_menu.addAction(_("&Master Public Key"))
+        show_mpk.triggered.connect(self.show_master_public_key)
+
+        wallet_menu.addSeparator()
+        new_contact = wallet_menu.addAction(_("&New contact"))
+        new_contact.triggered.connect(self.new_contact_dialog)
+
+        import_menu = menubar.addMenu(_("&Import"))
+        in_labels = import_menu.addAction(_("&Labels"))
+        in_labels.triggered.connect(self.do_import_labels)
+
+        in_private_keys = import_menu.addAction(_("&Private keys"))
+        in_private_keys.triggered.connect(self.do_import_privkey)
+
+        export_menu = menubar.addMenu(_("&Export"))
+        ex_private_keys = export_menu.addAction(_("&Private keys"))
+        ex_private_keys.triggered.connect(self.do_export_privkeys)
+
+        ex_history = export_menu.addAction(_("&History"))
+        ex_history.triggered.connect(self.do_export_history)
+
+        ex_labels = export_menu.addAction(_("&Labels"))
+        ex_labels.triggered.connect(self.do_export_labels)
+
+        help_menu = menubar.addMenu(_("&Help"))
+        doc_open = help_menu.addAction(_("&Documentation"))
+        doc_open.triggered.connect(lambda: webbrowser.open("http://electrum.org/documentation.html"))
+        web_open = help_menu.addAction(_("&Official website")) 
+        web_open.triggered.connect(lambda: webbrowser.open("http://electrum.org"))
+
+        self.setMenuBar(menubar)
+
+
+
+    def load_wallet(self, filename):
+        import electrum
+
+        config = electrum.SimpleConfig({'wallet_path': filename})
+        if not config.wallet_file_exists:
+            self.show_message("file not found "+ filename)
+            return
+
+        #self.wallet.verifier.stop()
+        interface = self.wallet.interface
+        verifier = self.wallet.verifier
+        self.wallet.synchronizer.stop()
+        
+        self.config = config
+        self.wallet = electrum.Wallet(self.config)
+        self.wallet.interface = interface
+        self.wallet.verifier = verifier
+
+        synchronizer = electrum.WalletSynchronizer(self.wallet, self.config)
+        synchronizer.start()
+
+        self.update_wallet()
+
+        
 
     # plugins
     def init_plugins(self):
@@ -967,7 +1077,6 @@ class ElectrumWindow(QMainWindow):
         self.connect(l, SIGNAL('itemChanged(QTreeWidgetItem*, int)'), lambda a,b: self.address_label_changed(a,b,l,0,1))
         self.contacts_list = l
         self.contacts_buttons_hbox = hbox
-        hbox.addWidget(EnterButton(_("New"), self.new_contact_dialog))
         hbox.addStretch(1)
         return w
 
@@ -1948,43 +2057,6 @@ class ElectrumWindow(QMainWindow):
                                              + _(' This settings affects the fields in the Send tab')+' '), 3, 3)
         grid_wallet.setRowStretch(4,1)
 
-
-        # import/export tab
-        tab3 = QWidget()
-        grid_io = QGridLayout(tab3)
-        grid_io.setColumnStretch(0,1)
-        tabs.addTab(tab3, _('Import/Export') )
-        
-        grid_io.addWidget(QLabel(_('Labels')), 1, 0)
-        grid_io.addWidget(EnterButton(_("Export"), self.do_export_labels), 1, 1)
-        grid_io.addWidget(EnterButton(_("Import"), self.do_import_labels), 1, 2)
-        grid_io.addWidget(HelpButton(_('Export your labels as json')), 1, 3)
-
-        grid_io.addWidget(QLabel(_('History')), 2, 0)
-        grid_io.addWidget(EnterButton(_("Export"), self.do_export_history), 2, 1)
-        grid_io.addWidget(HelpButton(_('Export your transaction history as csv')), 2, 3)
-
-        grid_io.addWidget(QLabel(_('Private keys')), 3, 0)
-
-        grid_io.addWidget(EnterButton(_("Export"), self.do_export_privkeys), 3, 1)
-        grid_io.addWidget(EnterButton(_("Import"), self.do_import_privkey), 3, 2)
-        grid_io.addWidget(HelpButton(_('Import private key')), 3, 3)
-
-        grid_io.addWidget(QLabel(_('Master Public Key')), 4, 0)
-        grid_io.addWidget(EnterButton(_("Show"), self.show_master_public_key), 4, 1)
-        grid_io.addWidget(HelpButton(_('Your Master Public Key can be used to create receiving addresses, but not to sign transactions.') + ' ' \
-                              + _('If you give it to someone, they will be able to see your transactions, but not to spend your money.') + ' ' \
-                              + _('If you restore your wallet from it, a watching-only (deseeded) wallet will be created.')), 4, 3)
-
-
-        grid_io.addWidget(QLabel(_("Load transaction")), 5, 0)
-        grid_io.addWidget(EnterButton(_("From file"), self.do_process_from_file), 5, 1)
-        grid_io.addWidget(EnterButton(_("From text"), self.do_process_from_text), 5, 2)
-        grid_io.addWidget(HelpButton(_("This will give you the option to sign or broadcast a transaction based on it's status.")), 5, 3)
-
-        grid_io.setRowStretch(6,1)
-
-
         # plugins
         if self.plugins:
             tab5 = QScrollArea()
@@ -1997,7 +2069,6 @@ class ElectrumWindow(QMainWindow):
             w = QWidget()
             w.setLayout(grid_plugins)
             tab5.setWidget(w)
-            tab5.setMaximumSize(tab3.size())  # optional
 
             w.setMinimumHeight(len(self.plugins)*35)
 

@@ -119,8 +119,12 @@ class Wallet:
         if self.seed_version != SEED_VERSION:
             raise ValueError("This wallet seed is deprecated. Please run upgrade.py for a diagnostic.")
 
-        for tx_hash in self.transactions.keys():
-            self.update_tx_outputs(tx_hash)
+        for tx_hash, tx in self.transactions.items():
+            if self.check_new_tx(tx_hash, tx):
+                self.update_tx_outputs(tx_hash)
+            else:
+                print_error("unreferenced tx", tx_hash)
+                self.transactions.pop(tx_hash)
 
 
     def set_up_to_date(self,b):
@@ -1037,6 +1041,7 @@ class WalletSynchronizer(threading.Thread):
         threading.Thread.__init__(self)
         self.daemon = True
         self.wallet = wallet
+        wallet.synchronizer = self
         self.interface = self.wallet.interface
         self.interface.register_channel('synchronizer')
         self.wallet.interface.register_callback('connected', lambda: self.wallet.set_up_to_date(False))
