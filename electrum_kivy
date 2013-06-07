@@ -962,7 +962,7 @@ class SettingsDialog(object):
                 nz = int( nz )
                 if nz>8: nz=8
             except:
-                return self.error_box(content_text=_('Invalid value')+':%s'%nz)
+                return self.parent.error_box(content_text=_('Invalid value')+':%s'%nz)
 
             if self.parent.wallet.num_zeros != nz:
                 self.parent.wallet.num_zeros = nz
