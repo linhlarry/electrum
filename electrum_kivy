@@ -28,6 +28,7 @@ from kivy.clock import Clock
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.label import Label
 from kivy.uix.button import Button
+from kivy.uix.bubble import Bubble
 from kivy.uix.popup import Popup
 from kivy.uix.textinput import TextInput
 from kivy.uix.gridlayout import GridLayout
@@ -168,7 +169,7 @@ class GridView(object):
     """Workaround solution for grid view by using 2 list view.
     Sometimes the height of lines is shown properly."""
 
-    def __init__(self, headers, widths=None, data=[], getter=None):
+    def __init__(self, headers, widths=None, data=[], getter=lambda item, i: item[i], on_context_menu=None):
         if not isinstance(headers, list):
             raise Exception('Headers must be a list of texts')
 
@@ -181,7 +182,7 @@ class GridView(object):
         if widths is not None:
             widths = ['%sdp' % i for i in widths]
 
-        def generic_args_converter(row_index, item, getter=None):
+        def generic_args_converter(row_index, item, is_header=True, getter=getter):
             cls_dicts = []
 
             for i, header in enumerate(headers):
@@ -189,14 +190,14 @@ class GridView(object):
                     'halign': 'left',
                     'size_hint_y': None,
                     'height': '30dp',
+                    'text': getter(item, i),
                 }
 
-                if getter is None:  # this is header
-                    kwargs['background_color'] = [0, 1, 1, 1]
-                    kwargs['selected_color'] = [0, 1, 1, 1]  # same color since header shouldn't be selected
-                    kwargs['text'] = item[i]
+                if is_header:
+                    kwargs['background_color'] = kwargs['selected_color'] = [0, 1, 1, 1]
                 else:  # this is content
-                    kwargs['text'] = getter(item, i)
+                    if on_context_menu is not None:
+                        kwargs['on_press'] = on_context_menu
 
                 if widths is not None:  # set width manually
                     kwargs['size_hint_x'] = None
@@ -208,6 +209,7 @@ class GridView(object):
                 })
 
             return {
+                'id': item[-1],
                 'size_hint_y': None,
                 'height': '30dp',
                 'cls_dicts': cls_dicts,
@@ -217,7 +219,7 @@ class GridView(object):
             return generic_args_converter(row_index, item)
 
         def content_args_converter(row_index, item):
-            return generic_args_converter(row_index, item, getter)
+            return generic_args_converter(row_index, item, is_header=False)
 
         header_adapter = ListAdapter(data=[headers],
                                    args_converter=header_args_converter,
@@ -268,7 +270,7 @@ class NetworkDialog(object):
 
         if instance is not None:
             if interface.is_connected:
-                status = _("Connected to")+" %s"%(interface.host) + "\n%d "%(wallet.verifier.height)+_("blocks")
+                status = _("Connected to") + " %s" % (interface.host) + "\n%d " % (wallet.verifier.height) + _("blocks")
             else:
                 status = _("Not connected")
             server = interface.server
@@ -303,8 +305,6 @@ class NetworkDialog(object):
         self.servers_view = GridView(
             headers=[_('Active Servers') if interface.servers else _('Default Servers'), _('Limit')],
             widths=[300, 75],
-            data=[],
-            getter=lambda item, i: item[i],
         )
         self.servers_view.content_adapter.bind(on_selection_change=self.server_changed)
 
@@ -320,7 +320,7 @@ class NetworkDialog(object):
 
         ########################
         # TODO: review it
-        #if not config.is_modifiable('server'):
+        # if not config.is_modifiable('server'):
         #    for w in [self.server_host, self.server_port, self.server_protocol, self.servers_list_widget]: w.setEnabled(False)
 
         ########## Proxy ##########
@@ -350,7 +350,7 @@ class NetworkDialog(object):
         check_for_disable(None, 'none')
         self.proxy_mode.bind(key=check_for_disable)
 
-        #if not wallet.config.is_modifiable('proxy'):
+        # if not wallet.config.is_modifiable('proxy'):
         #    for w in [proxy_host, proxy_port, proxy_mode]: w.setEnabled(False)
 
         proxy_config = interface.proxy if interface.proxy else { "mode":"none", "host":"localhost", "port":"8080"}
@@ -358,10 +358,10 @@ class NetworkDialog(object):
         self.proxy_host.text = proxy_config.get("host")
         self.proxy_port.text = proxy_config.get("port")
 
-        #server = unicode( server_host.text ) + ':' + unicode( server_port.text ) + ':' + (protocol_letters[server_protocol.currentIndex()])
-        #if proxy_mode.currentText() != 'NONE':
+        # server = unicode( server_host.text ) + ':' + unicode( server_port.text ) + ':' + (protocol_letters[server_protocol.currentIndex()])
+        # if proxy_mode.currentText() != 'NONE':
         #    proxy = { u'mode':unicode(proxy_mode.currenttext).lower(), u'host':unicode(proxy_host.text), u'port':unicode(proxy_port.text) }
-        #else:
+        # else:
         #    proxy = None
 
         ########################
@@ -377,8 +377,8 @@ class NetworkDialog(object):
             dialog.close()
 
             # TODO: RuntimeError: threads can only be started once
-            #interface.start(wait=False)
-            #interface.send([('server.peers.subscribe', [])])
+            # interface.start(wait=False)
+            # interface.send([('server.peers.subscribe', [])])
 
             # generate the first addresses, in case we are offline
             parent.wallet.synchronize()
@@ -417,8 +417,8 @@ class NetworkDialog(object):
             ################
 
             # TODO: RuntimeError: threads can only be started once
-            #interface.start(wait=False)
-            #interface.send([('server.peers.subscribe', [])])
+            # interface.start(wait=False)
+            # interface.send([('server.peers.subscribe', [])])
 
             # generate the first addresses, in case we are offline
             if self.parent.action == 'create':
@@ -453,8 +453,8 @@ class NetworkDialog(object):
         data = []
         for _host, d in self.servers.items():
             if d.get(self.protocol):
-                pruning_level = d.get('pruning','')
-                data.append(( _host, pruning_level ))
+                pruning_level = d.get('pruning', '')
+                data.append((_host, pruning_level))
         self.servers_view.content_adapter.data = data
 
     def set_protocol(self, protocol):
@@ -501,7 +501,7 @@ class NetworkDialog(object):
 
         if not self.servers: return
         # TODO: what's this?
-        #for p in protocol_letters:
+        # for p in protocol_letters:
         #    i = protocol_letters.index(p)
         #    j = self.server_protocol.model().index(i,0)
         #    #if p not in pp.keys(): # and self.interface.is_connected:
@@ -540,7 +540,7 @@ class SettingsDialog(object):
                     _('Number of zeros displayed after the decimal point. For example, if this is set to 2, "1." will be displayed as "1.00"')))
 
             # TODO:
-            #if not self.conf.is_modifiable('num_zeros'):
+            # if not self.conf.is_modifiable('num_zeros'):
             #    for w in [nz_e, nz_label]: w.setEnabled(False)
 
             self.st_lang_combo = ComboBox(
@@ -552,7 +552,7 @@ class SettingsDialog(object):
                     _('Select which language is used in the GUI (after restart).')))
 
             # TODO:
-            #if not self.config.is_modifiable('language'):
+            # if not self.config.is_modifiable('language'):
             #    for w in [lang_combo, lang_label]: w.setEnabled(False)
 
             currencies = self.parent.exchanger.get_currencies()
@@ -569,7 +569,7 @@ class SettingsDialog(object):
 
             self.st_expert_cb = CheckBox()
             self.st_expert_cb.active = self.parent.expert_mode
-            hh =  _('In expert mode, your client will:') + '\n'  \
+            hh = _('In expert mode, your client will:') + '\n'  \
                 + _(' - Show change addresses in the Receive tab') + '\n'  \
                 + _(' - Display the balance of each address') + '\n'  \
                 + _(' - Add freeze/prioritize actions to addresses.')
@@ -596,10 +596,10 @@ class SettingsDialog(object):
 
             self.st_gap_e = TextInput(text="%d" % self.parent.wallet.gap_limit, multiline=False, size_hint_x=None, width='100dp')
 
-            msg =  _('The gap limit is the maximal number of contiguous unused addresses in your sequence of receiving addresses.') + '\n' \
+            msg = _('The gap limit is the maximal number of contiguous unused addresses in your sequence of receiving addresses.') + '\n' \
                   + _('You may increase it if you need more receiving addresses.') + '\n\n' \
-                  + _('Your current gap limit is') + ': %d'%self.parent.wallet.gap_limit + '\n' \
-                  + _('Given the current status of your address sequence, the minimum gap limit you can use is:')+' ' + '%d'%self.parent.wallet.min_acceptable_gap() + '\n\n' \
+                  + _('Your current gap limit is') + ': %d' % self.parent.wallet.gap_limit + '\n' \
+                  + _('Given the current status of your address sequence, the minimum gap limit you can use is:') + ' ' + '%d' % self.parent.wallet.min_acceptable_gap() + '\n\n' \
                   + _('Warning') + ': ' \
                   + _('The gap limit parameter must be provided in order to recover your wallet from seed.') + ' ' \
                   + _('Do not modify it if you do not understand what you are doing, or if you expect to recover your wallet without knowing it!') + '\n\n'
@@ -608,7 +608,7 @@ class SettingsDialog(object):
                     _('Gap limit'), self.st_gap_e, msg))
 
             # TODO:
-            #if not self.config.is_modifiable('gap_limit'):
+            # if not self.config.is_modifiable('gap_limit'):
             #    for w in [gap_e, gap_label]: w.setEnabled(False)
 
             units = ['BTC', 'mBTC']
@@ -640,9 +640,9 @@ class SettingsDialog(object):
                         try:
                             with open(os.path.join(path, filename), 'w+') as stream:
                                 json.dump(labels, stream)
-                            self.parent.info_box(title="Labels exported", content_text=_("Your labels were exported to")+" '%s'" % str(filename))
+                            self.parent.info_box(title="Labels exported", content_text=_("Your labels were exported to") + " '%s'" % str(filename))
                         except (IOError, os.error), reason:
-                            self.parent.error_box(title="Unable to export labels", content_text=_("Electrum was unable to export your labels.")+"\n" + str(reason))
+                            self.parent.error_box(title="Unable to export labels", content_text=_("Electrum was unable to export your labels.") + "\n" + str(reason))
                         dialog.close()
 
                     dialog = SaveDialog(title, path=path, filename=filename, filters=filters)
@@ -665,9 +665,9 @@ class SettingsDialog(object):
                                 for key, value in json.loads(stream.read()).items():
                                     self.parent.wallet.labels[key] = value
                                 self.parent.wallet.save()
-                            self.parent.info_box(title="Labels imported", content_text=_("Your labels were imported from")+" '%s'" % str(filename))
+                            self.parent.info_box(title="Labels imported", content_text=_("Your labels were imported from") + " '%s'" % str(filename))
                         except (IOError, os.error), reason:
-                            self.parent.error_box(title="Unable to import labels", content_text=_("Electrum was unable to import your labels.")+"\n" + str(reason))
+                            self.parent.error_box(title="Unable to import labels", content_text=_("Electrum was unable to import your labels.") + "\n" + str(reason))
 
                         dialog.close()
 
@@ -689,7 +689,7 @@ class SettingsDialog(object):
                         try:
                             with open(os.path.join(path, filename), "w+") as stream:
                                 transaction = csv.writer(stream)
-                                transaction.writerow(["transaction_hash","label", "confirmations", "value", "fee", "balance", "timestamp"])
+                                transaction.writerow(["transaction_hash", "label", "confirmations", "value", "fee", "balance", "timestamp"])
                                 for item in wallet.get_tx_history():
                                     tx_hash, confirmations, is_mine, value, fee, balance, timestamp = item
                                     if confirmations:
@@ -748,7 +748,7 @@ class SettingsDialog(object):
                                         transaction = csv.writer(csvfile)
                                         transaction.writerow(["address", "private_key"])
                                         for addr, pk in self.parent.wallet.get_private_keys(self.parent.wallet.addresses(True), password).items():
-                                            transaction.writerow(["%34s"%addr,pk])
+                                            transaction.writerow(["%34s" % addr, pk])
                                         self.parent.info_box(content_text=_("Private keys exported."))
                                 except (IOError, os.error), reason:
                                     export_error_label = _("Electrum was unable to produce a private key-export.")
@@ -797,7 +797,7 @@ class SettingsDialog(object):
                                 if addrlist:
                                     self.parent.info_box(title=_('Information'), content_text=_("The following addresses were added") + ':\n' + '\n'.join(addrlist))
                                 if badkeys:
-                                    self.parent.error_box(title=_('Error'), content_text=_("The following inputs could not be imported") + ':\n'+ '\n'.join(badkeys))
+                                    self.parent.error_box(title=_('Error'), content_text=_("The following inputs could not be imported") + ':\n' + '\n'.join(badkeys))
                                 self.parent.update_receive_tab()
                                 self.parent.update_history_tab()
 
@@ -807,7 +807,7 @@ class SettingsDialog(object):
                             # Init another dialog
                             text_input = TextInput()
                             import_dialog = Dialog(title=_('Import private keys'))
-                            import_dialog.add_content(Label(text=_("Enter private keys")+':'))
+                            import_dialog.add_content(Label(text=_("Enter private keys") + ':'))
                             import_dialog.add_content(text_input)
                             import_dialog.add_button(Button(text=_('Cancel'), on_press=do_cancel_privkey))
                             import_dialog.add_button(Button(text=_('Import'), on_press=do_import_privkey))
@@ -815,7 +815,7 @@ class SettingsDialog(object):
 
                         if not self.parent.wallet.imported_keys:
                             confirm_dialog = Dialog(title=_('Warning'))
-                            label = Label(text='[b]'+_('Warning') +':[/b]\n'+ _('Imported keys are not recoverable from seed.') + ' ' \
+                            label = Label(text='[b]' + _('Warning') + ':[/b]\n' + _('Imported keys are not recoverable from seed.') + ' ' \
                                                     + _('If you ever need to restore your wallet from its seed, these keys will be lost.') + '\n\n' \
                                                     + _('Are you sure you understand what you are doing?'),
                                                     markup=True)
@@ -952,17 +952,17 @@ class SettingsDialog(object):
             try:
                 fee = self.parent.read_amount(fee)
             except:
-                return self.parent.error_box(content_text=_('Invalid value') +': %s'%fee)
+                return self.parent.error_box(content_text=_('Invalid value') + ': %s' % fee)
 
             self.parent.wallet.set_fee(fee)
 
             ##########
             nz = unicode(self.st_nz_e.text)
             try:
-                nz = int( nz )
-                if nz>8: nz=8
+                nz = int(nz)
+                if nz > 8: nz = 8
             except:
-                return self.parent.error_box(content_text=_('Invalid value')+':%s'%nz)
+                return self.parent.error_box(content_text=_('Invalid value') + ':%s' % nz)
 
             if self.parent.wallet.num_zeros != nz:
                 self.parent.wallet.num_zeros = nz
@@ -1360,9 +1360,6 @@ class ElectrumInitGui(ElectrumGui):
 
 
 class ElectrumMainGui(ElectrumGui):
-    def emit(self, signal):
-        pass
-
     def __init__(self, app):
         super(ElectrumMainGui, self).__init__(app)
 
@@ -1441,7 +1438,7 @@ class ElectrumMainGui(ElectrumGui):
 
     def connect_slots(self):
         Clock.schedule_interval(self.timer_actions, 0.5)
-        #self.previous_payto_e = ''  # For plugins only
+        # self.previous_payto_e = ''  # For plugins only
 
     def timer_actions(self, interval):
         # print 'timer_actions', datetime.datetime.now()
@@ -1498,65 +1495,85 @@ class ElectrumMainGui(ElectrumGui):
         return quote_text
 
     def create_history_tab(self):
-        # TODO: rewrite parse function
-        def parse(item):
-            # tx_hash, conf, is_mine, value, fee, balance, timestamp
-            tx_hash, conf, is_mine, value, fee, balance, timestamp = item
-            if conf > 0:
-                try:
-                    time_str = datetime.datetime.fromtimestamp(timestamp).isoformat(' ')[:-3]
-                except:
-                    time_str = "unknown"
+        self.last_instance = None
 
-            if conf == -1:
-                time_str = 'unverified'
-                # icon = QIcon(":icons/unconfirmed.png")
-            elif conf == 0:
-                time_str = 'pending'
-                # icon = QIcon(":icons/unconfirmed.png")
-            elif conf < 6:
-                time_str = ''  # add new to fix error when conf < 0
-                # icon = QIcon(":icons/clock%d.png"%conf)
-                pass
-            else:
-                # icon = QIcon(":icons/confirmed.png")
-                pass
+        def on_context_menu(instance):
+            def show_tx_details(_instance):
+                tx_hash = instance.parent.id
+                tx = self.wallet.transactions.get(tx_hash)
 
-            if value is not None:
-                v_str = self.format_amount(value, True)
-            else:
-                v_str = '--'
+                if tx_hash in self.wallet.transactions.keys():
+                    is_relevant, is_mine, v, fee = self.wallet.get_tx_value(tx)
+                    conf, timestamp = self.wallet.verifier.get_confirmations(tx_hash)
+                    if timestamp:
+                        time_str = datetime.datetime.fromtimestamp(timestamp).isoformat(' ')[:-3]
+                    else:
+                        time_str = 'pending'
+                else:
+                    is_mine = False
 
-            balance_str = self.format_amount(balance)
+                dialog = Dialog(title=_('Transaction Details'), size=('600dp', '450dp'))
+                dialog.add_content(Label(text=_('Transaction ID') + ':', size_hint_y=None, height='30dp'))
+                dialog.add_content(TextInput(text=tx_hash, size_hint_y=None, height='30dp', readonly=True))
 
-            if tx_hash:
-                label, is_default_label = self.wallet.get_label(tx_hash)
-            else:
-                label = _('Pruned transaction outputs')
-                is_default_label = False
+                dialog.add_content(Label(text="Date: %s"%time_str, size_hint_y=None, height='30dp'))
+                dialog.add_content(Label(text="Status: %d confirmations"%conf, size_hint_y=None, height='30dp'))
 
-            return '', time_str, label, v_str, balance_str
+                if is_mine:
+                    if fee is not None: 
+                        dialog.add_content(Label(text="Amount sent: %s"% self.format_amount(v-fee), size_hint_y=None, height='30dp'))
+                        dialog.add_content(Label(text="Transaction fee: %s"% self.format_amount(fee), size_hint_y=None, height='30dp'))
+                    else:
+                        dialog.add_content(Label(text="Amount sent: %s"% self.format_amount(v), size_hint_y=None, height='30dp'))
+                        dialog.add_content(Label(text="Transaction fee: unknown"))
+                else:
+                    dialog.add_content(Label(text="Amount received: %s"% self.format_amount(v), size_hint_y=None, height='30dp'))
 
-            # item = QTreeWidgetItem( [ '', time_str, label, v_str, balance_str] )
-            # item.setFont(2, QFont(MONOSPACE_FONT))
-            # item.setFont(3, QFont(MONOSPACE_FONT))
-            # item.setFont(4, QFont(MONOSPACE_FONT))
-            # if value < 0:
-            #    item.setForeground(3, QBrush(QColor("#BC1E1E")))
-            # if tx_hash:
-            #    item.setData(0, Qt.UserRole, tx_hash)
-            #    item.setToolTip(0, "%d %s\nTxId:%s" % (conf, _('Confirmations'), tx_hash) )
-            # if is_default_label:
-            #    item.setForeground(2, QBrush(QColor('grey')))
+                dialog.add_content(self.generate_transaction_information_widget(tx))
+                dialog.add_button(Button(text=_("Cancel"), on_press=lambda instance: dialog.close()))
 
-            # item.setIcon(0, icon)
-            # self.history_list.insertTopLevelItem(0,item)
+                dialog.open()
+
+                if self.last_instance is not None:
+                    self.last_instance.clear_widgets()
+
+            def tx_label_clicked(_instance):
+                def save_description(__instance):
+                    if text_input.text:
+                        instance.parent.children[2].text = text_input.text
+                    dialog.close()
+
+                text = instance.parent.children[2].text
+                text_input = TextInput(text=text, size_hint_y=None, height='30dp', multiline=False, focus=True)
+                text_input.select_all()
+                dialog = Dialog(title=_('Edit description'), size=('600dp', '130dp'))
+                dialog.add_content(text_input)
+                dialog.add_button(Button(text=_("Cancel"), on_press=lambda instance: dialog.close()))
+                dialog.add_button(Button(text=_('OK'), on_press=save_description))
+                dialog.open()
+
+                if self.last_instance is not None:
+                    self.last_instance.clear_widgets()
+
+            if self.last_instance is not None:
+                self.last_instance.clear_widgets()
+            self.last_instance = instance
+
+            context_menu = Bubble(orientation='vertical', size_hint=(None, None), size=('160dp', '80dp'),
+                                  arrow_pos='bottom_mid')
+            instance.add_widget(context_menu)
+
+            context_menu.pos = instance.pos  # TODO: more cases
+            button_detail = Button(text=_('Details'), on_press=show_tx_details)
+            button_edit = Button(text=_('Edit description'), on_press=tx_label_clicked)
+            context_menu.add_widget(button_detail)
+            context_menu.add_widget(button_edit)
 
         self.history_view = GridView(
             headers=["", _("Date"), _("Description"), _("Amount"), _("Balance")],
             widths=[50, 150, 400, 100, 100],
-            data=reversed(self.wallet.get_tx_history(self.current_account)),
-            getter=lambda item, i: unicode(parse(item)[i]),
+            #data=self.parse_histories(reversed(self.wallet.get_tx_history(self.current_account))),
+            on_context_menu=on_context_menu,
         )
 
         return self.history_view.layout
@@ -1589,15 +1606,37 @@ class ElectrumMainGui(ElectrumGui):
         # TODO:
         pass
 
+    def generate_transaction_information_widget(self, tx):
+        def add_outputs():
+            return GridView(
+                headers=[_('Address'), _('Amount')],
+                widths=[400, 176],
+                data=[(address, self.format_amount(value)) for address, value in tx.outputs],
+            ).layout
+
+        def add_inputs():
+            return GridView(
+                headers=[_('Address'), _('Previous output')],
+                widths=[200, 376],
+                data=[(str(input["address"]), str(input["prevout_hash"])) for input in tx.inputs],
+            ).layout
+
+        tabs = TabbedPanel(do_default_tab=False)
+        self.add_tab(tabs, add_outputs(), _('Outputs'))
+        self.add_tab(tabs, add_inputs(), _('Inputs'))
+ 
+        return tabs
+
     def current_item_changed(self, item):
         self.run_hook('current_item_changed', item)
 
     def update_history_tab(self):
-        self.history_view.content_adapter.data = reversed(self.wallet.get_tx_history(self.current_account))
+        self.history_view.content_adapter.data = \
+                self.parse_histories(reversed(self.wallet.get_tx_history(self.current_account)))
 
     def create_send_tab(self):
         def add_row(label, input, help):
-            hbox = BoxLayout(orientation='horizontal')  #, size_hint_y=None, height='30dp')
+            hbox = BoxLayout(orientation='horizontal')  # , size_hint_y=None, height='30dp')
             hbox.add_widget(Label(text=label))
             hbox.add_widget(input)
             hbox.add_widget(Button(text="?", size_hint_x=None, width='30dp',
@@ -1607,20 +1646,20 @@ class ElectrumMainGui(ElectrumGui):
         vbox = BoxLayout(orientation='vertical', size_hint_y=None, height='160dp')
 
         self.payto_e = TextInput(multiline=False)
-        #if DEBUG: self.payto_e.text = '13iB6JbHqJ9efgHTbDcRqewUZeCxywvUxN'
+        # if DEBUG: self.payto_e.text = '13iB6JbHqJ9efgHTbDcRqewUZeCxywvUxN'
         add_row(_('Pay to'), self.payto_e, _('Recipient of the funds.') + '\n\n' + _('You may enter a Bitcoin address, a label from your list of contacts (a list of completions will be proposed), or an alias (email-like address that forwards to a Bitcoin address)'))
 
         self.message_e = TextInput(multiline=False)
         add_row(_('Description'), self.message_e, _('Description of the transaction (not mandatory).') + '\n\n' + _('The description is not sent to the recipient of the funds. It is stored in your wallet file, and displayed in the \'History\' tab.'))
 
         self.amount_e = TextInput(multiline=False)
-        #if DEBUG: self.amount_e.text = '0.001'
+        # if DEBUG: self.amount_e.text = '0.001'
         add_row(_('Amount'), self.amount_e, _('Amount to be sent.') + '\n\n' \
                     + _('The amount will be displayed in red if you do not have enough funds in your wallet. Note that if you have frozen some of your addresses, the available funds will be lower than your total balance.') \
                     + '\n\n' + _('Keyboard shortcut: type "!" to send all your coins.'))
 
         self.fee_e = TextInput(multiline=False)
-        #if DEBUG: self.fee_e.text = '0.0001'
+        # if DEBUG: self.fee_e.text = '0.0001'
         add_row(_('Fee'), self.fee_e, _('Bitcoin transactions are in general not free. A transaction fee is paid by the sender of the funds.') + '\n\n'\
                     + _('The amount of fee can be decided freely by the sender. However, transactions with low fees take more time to be processed.') + '\n\n'\
                     + _('A suggested fee is automatically added to this field. You may override it. The suggested fee increases with the size of the transaction.'))
@@ -1698,7 +1737,7 @@ class ElectrumMainGui(ElectrumGui):
             self.set_label(tx.hash(), label)
 
         if tx.is_complete:
-            #h = self.wallet.send_tx(tx)  # async: this doesn't work in Kivy
+            # h = self.wallet.send_tx(tx)  # async: this doesn't work in Kivy
             h = self.wallet.sendtx(tx)  # sync
             #### TODO: waiting_dialog(lambda: False if self.wallet.tx_event.isSet() else _("Please wait..."))
             status, msg = self.wallet.receive_tx(h)
@@ -1749,15 +1788,13 @@ class ElectrumMainGui(ElectrumGui):
         self.receive_list = GridView(
             headers=[_('Address'), _('Label'), _('Balance'), _('Tx')],
             widths=[350, 250, 100, 100],
-            data=[],
-            getter=lambda item, i: item[i],
         )
 
-        #l.setContextMenuPolicy(Qt.CustomContextMenu)
-        #l.customContextMenuRequested.connect(self.create_receive_menu)
-        #self.connect(l, SIGNAL('itemDoubleClicked(QTreeWidgetItem*, int)'), lambda a, b: self.address_label_clicked(a,b,l,0,1))
-        #self.connect(l, SIGNAL('itemChanged(QTreeWidgetItem*, int)'), lambda a,b: self.address_label_changed(a,b,l,0,1))
-        #self.connect(l, SIGNAL('currentItemChanged(QTreeWidgetItem*, QTreeWidgetItem*)'), lambda a,b: self.current_item_changed(a))
+        # l.setContextMenuPolicy(Qt.CustomContextMenu)
+        # l.customContextMenuRequested.connect(self.create_receive_menu)
+        # self.connect(l, SIGNAL('itemDoubleClicked(QTreeWidgetItem*, int)'), lambda a, b: self.address_label_clicked(a,b,l,0,1))
+        # self.connect(l, SIGNAL('itemChanged(QTreeWidgetItem*, int)'), lambda a,b: self.address_label_changed(a,b,l,0,1))
+        # self.connect(l, SIGNAL('currentItemChanged(QTreeWidgetItem*, QTreeWidgetItem*)'), lambda a,b: self.current_item_changed(a))
 
         return self.receive_list.layout
 
@@ -1793,25 +1830,23 @@ class ElectrumMainGui(ElectrumGui):
         self.contacts_list = GridView(
             headers=[_('Address'), _('Label'), _('Tx')],
             widths=[350, 250, 200],
-            data=[],
-            getter=lambda item, i: item[i],
         )
 
         vbox = BoxLayout(orientation='vertical')
         vbox.add_widget(self.contacts_list.layout)
         vbox.add_widget(Button(text=_("New"), size_hint=(0.25, None), height='40dp', on_press=new_contact_dialog))
 
-        #l.setContextMenuPolicy(Qt.CustomContextMenu)
-        #l.customContextMenuRequested.connect(self.create_contact_menu)
-        #self.connect(l, SIGNAL('itemDoubleClicked(QTreeWidgetItem*, int)'), lambda a, b: self.address_label_clicked(a,b,l,0,1))
-        #self.connect(l, SIGNAL('itemChanged(QTreeWidgetItem*, int)'), lambda a,b: self.address_label_changed(a,b,l,0,1))
+        # l.setContextMenuPolicy(Qt.CustomContextMenu)
+        # l.customContextMenuRequested.connect(self.create_contact_menu)
+        # self.connect(l, SIGNAL('itemDoubleClicked(QTreeWidgetItem*, int)'), lambda a, b: self.address_label_clicked(a,b,l,0,1))
+        # self.connect(l, SIGNAL('itemChanged(QTreeWidgetItem*, int)'), lambda a,b: self.address_label_changed(a,b,l,0,1))
 
         return vbox
 
     def create_console_tab(self):
         from electrum_gui.kivy_console import Console
         self.console = console = Console()
-        self.console.history = self.conf.get("console-history",[])
+        self.console.history = self.conf.get("console-history", [])
         self.console.history_index = len(self.console.history)
 
         console.updateNamespace({'wallet' : self.wallet, 'interface' : self.wallet.interface, 'gui':self})
@@ -1820,11 +1855,11 @@ class ElectrumMainGui(ElectrumGui):
         c = Commands(self.wallet, self.wallet.interface, lambda: self.console.set_json(True))
         methods = {}
         def mkfunc(f, method):
-            return lambda *args: apply( f, (method, args, self.password_required_dialog ))
+            return lambda *args: apply(f, (method, args, self.password_required_dialog))
         for m in dir(c):
-            if m[0]=='_' or m=='wallet' or m == 'interface': continue
+            if m[0] == '_' or m == 'wallet' or m == 'interface': continue
             methods[m] = mkfunc(c._run, m)
-            
+
         console.updateNamespace(methods)
         return console
 
@@ -1931,14 +1966,14 @@ class ElectrumMainGui(ElectrumGui):
 
     def update_receive_item(self, item):
         # TODO: can't port completely since there's no corresponding widget
-        #item.setFont(0, QFont(MONOSPACE_FONT))
+        # item.setFont(0, QFont(MONOSPACE_FONT))
         self.run_hook('update_receive_item', item)
 
-        #c, u = self.wallet.get_addr_balance(address)
-        #balance = self.format_amount(c + u)
-        #item.setData(2,0,balance)
+        # c, u = self.wallet.get_addr_balance(address)
+        # balance = self.format_amount(c + u)
+        # item.setData(2,0,balance)
 
-        #if self.expert_mode:
+        # if self.expert_mode:
         #    if address in self.wallet.frozen_addresses:
         #        item.setBackgroundColor(0, QColor('lightblue'))
         #    elif address in self.wallet.prioritized_addresses:
@@ -1955,11 +1990,11 @@ class ElectrumMainGui(ElectrumGui):
             account_items = []
 
         for k, account in account_items:
-            name = account.get('name',str(k))
-            c,u = self.wallet.get_account_balance(k)
-            data = [(name, '', self.format_amount(c+u), '')]
+            name = account.get('name', str(k))
+            c, u = self.wallet.get_account_balance(k)
+            data = [(name, '', self.format_amount(c + u), '')]
 
-            for is_change in ([0,1] if self.expert_mode else [0]):
+            for is_change in ([0, 1] if self.expert_mode else [0]):
                 if self.expert_mode:
                     name = "Receiving" if not is_change else "Change"
                     seq_item = (name, '', '', '')
@@ -1979,14 +2014,14 @@ class ElectrumMainGui(ElectrumGui):
                     else:
                         gap = 0
 
-                    num_tx = '*' if h == ['*'] else "%d"%len(h)
+                    num_tx = '*' if h == ['*'] else "%d" % len(h)
                     item = (address, self.wallet.labels.get(address, ''), '', num_tx)
                     data.append(item)
                     self.update_receive_item(item)
 
         if self.wallet.imported_keys and (self.current_account is None or self.current_account == -1):
-            c,u = self.wallet.get_imported_balance()
-            data.append((_('Imported'), '', self.format_amount(c+u), ''))
+            c, u = self.wallet.get_imported_balance()
+            data.append((_('Imported'), '', self.format_amount(c + u), ''))
             for address in self.wallet.imported_keys.keys():
                 item = (address, self.wallet.labels.get(address, ''), '', '')
                 data.append(item)
@@ -2000,11 +2035,11 @@ class ElectrumMainGui(ElectrumGui):
             label = self.wallet.labels.get(address, '')
             item = (address, label, "%d" % self.wallet.get_num_tx(address))
             data.append(item)
-            #item.setFont(0, QFont(MONOSPACE_FONT))
-            ## 32 = label can be edited (bool)
-            #item.setData(0,32, True)
-            ## 33 = payto string
-            #item.setData(0,33, address)
+            # item.setFont(0, QFont(MONOSPACE_FONT))
+            # # 32 = label can be edited (bool)
+            # item.setData(0,32, True)
+            # # 33 = payto string
+            # item.setData(0,33, address)
 
         self.run_hook('update_contacts_tab')
 
@@ -2012,6 +2047,68 @@ class ElectrumMainGui(ElectrumGui):
 
     def show_settings_dialog(self, instance):
         SettingsDialog(self, instance)
+
+    def parse_histories(self, items):
+        results = []
+        for item in items:
+            tx_hash, conf, is_mine, value, fee, balance, timestamp = item
+            if conf > 0:
+                try:
+                    time_str = datetime.datetime.fromtimestamp(timestamp).isoformat(' ')[:-3]
+                except:
+                    time_str = "unknown"
+
+            if conf == -1:
+                time_str = 'unverified'
+                # icon = QIcon(":icons/unconfirmed.png")
+            elif conf == 0:
+                time_str = 'pending'
+                # icon = QIcon(":icons/unconfirmed.png")
+            elif conf < 6:
+                time_str = ''  # add new to fix error when conf < 0
+                # icon = QIcon(":icons/clock%d.png"%conf)
+                pass
+            else:
+                # icon = QIcon(":icons/confirmed.png")
+                pass
+
+            if value is not None:
+                v_str = self.format_amount(value, True)
+            else:
+                v_str = '--'
+
+            balance_str = self.format_amount(balance)
+
+            if tx_hash:
+                label, is_default_label = self.wallet.get_label(tx_hash)
+            else:
+                label = _('Pruned transaction outputs')
+                is_default_label = False
+
+            # NOTE: just show 5 on a row but get 6. The last one is ID of that row.
+            results.append(('', time_str, label, v_str, balance_str, tx_hash))
+
+            # item = QTreeWidgetItem( [ '', time_str, label, v_str, balance_str] )
+            # item.setFont(2, QFont(MONOSPACE_FONT))
+            # item.setFont(3, QFont(MONOSPACE_FONT))
+            # item.setFont(4, QFont(MONOSPACE_FONT))
+            # if value < 0:
+            #    item.setForeground(3, QBrush(QColor("#BC1E1E")))
+            # if tx_hash:
+            #    item.setData(0, Qt.UserRole, tx_hash)
+            #    item.setToolTip(0, "%d %s\nTxId:%s" % (conf, _('Confirmations'), tx_hash) )
+            # if is_default_label:
+            #    item.setForeground(2, QBrush(QColor('grey')))
+
+            # item.setIcon(0, icon)
+            # self.history_list.insertTopLevelItem(0,item)
+
+        return results
+
+    def emit(self, signal):
+        """Dummy function to avoid call error"""
+        pass
+
 
 class ElectrumApp(App):
     title = _('Electrum App')
