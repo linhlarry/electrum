@@ -1572,7 +1572,6 @@ class ElectrumMainGui(ElectrumGui):
         self.history_view = GridView(
             headers=["", _("Date"), _("Description"), _("Amount"), _("Balance")],
             widths=[50, 150, 400, 100, 100],
-            #data=self.parse_histories(reversed(self.wallet.get_tx_history(self.current_account))),
             on_context_menu=on_context_menu,
         )
 
@@ -1631,8 +1630,65 @@ class ElectrumMainGui(ElectrumGui):
         self.run_hook('current_item_changed', item)
 
     def update_history_tab(self):
+        def parse_histories(items):
+            results = []
+            for item in items:
+                tx_hash, conf, is_mine, value, fee, balance, timestamp = item
+                if conf > 0:
+                    try:
+                        time_str = datetime.datetime.fromtimestamp(timestamp).isoformat(' ')[:-3]
+                    except:
+                        time_str = "unknown"
+    
+                if conf == -1:
+                    time_str = 'unverified'
+                    # icon = QIcon(":icons/unconfirmed.png")
+                elif conf == 0:
+                    time_str = 'pending'
+                    # icon = QIcon(":icons/unconfirmed.png")
+                elif conf < 6:
+                    time_str = ''  # add new to fix error when conf < 0
+                    # icon = QIcon(":icons/clock%d.png"%conf)
+                    pass
+                else:
+                    # icon = QIcon(":icons/confirmed.png")
+                    pass
+    
+                if value is not None:
+                    v_str = self.format_amount(value, True)
+                else:
+                    v_str = '--'
+    
+                balance_str = self.format_amount(balance)
+    
+                if tx_hash:
+                    label, is_default_label = self.wallet.get_label(tx_hash)
+                else:
+                    label = _('Pruned transaction outputs')
+                    is_default_label = False
+    
+                # NOTE: just show 5 on a row but get 6. The last one is ID of that row.
+                results.append(('', time_str, label, v_str, balance_str, tx_hash))
+    
+                # item = QTreeWidgetItem( [ '', time_str, label, v_str, balance_str] )
+                # item.setFont(2, QFont(MONOSPACE_FONT))
+                # item.setFont(3, QFont(MONOSPACE_FONT))
+                # item.setFont(4, QFont(MONOSPACE_FONT))
+                # if value < 0:
+                #    item.setForeground(3, QBrush(QColor("#BC1E1E")))
+                # if tx_hash:
+                #    item.setData(0, Qt.UserRole, tx_hash)
+                #    item.setToolTip(0, "%d %s\nTxId:%s" % (conf, _('Confirmations'), tx_hash) )
+                # if is_default_label:
+                #    item.setForeground(2, QBrush(QColor('grey')))
+    
+                # item.setIcon(0, icon)
+                # self.history_list.insertTopLevelItem(0,item)
+    
+            return results
+
         self.history_view.content_adapter.data = \
-                self.parse_histories(reversed(self.wallet.get_tx_history(self.current_account)))
+                parse_histories(reversed(self.wallet.get_tx_history(self.current_account)))
 
     def create_send_tab(self):
         def add_row(label, input, help):
@@ -2047,63 +2103,6 @@ class ElectrumMainGui(ElectrumGui):
 
     def show_settings_dialog(self, instance):
         SettingsDialog(self, instance)
-
-    def parse_histories(self, items):
-        results = []
-        for item in items:
-            tx_hash, conf, is_mine, value, fee, balance, timestamp = item
-            if conf > 0:
-                try:
-                    time_str = datetime.datetime.fromtimestamp(timestamp).isoformat(' ')[:-3]
-                except:
-                    time_str = "unknown"
-
-            if conf == -1:
-                time_str = 'unverified'
-                # icon = QIcon(":icons/unconfirmed.png")
-            elif conf == 0:
-                time_str = 'pending'
-                # icon = QIcon(":icons/unconfirmed.png")
-            elif conf < 6:
-                time_str = ''  # add new to fix error when conf < 0
-                # icon = QIcon(":icons/clock%d.png"%conf)
-                pass
-            else:
-                # icon = QIcon(":icons/confirmed.png")
-                pass
-
-            if value is not None:
-                v_str = self.format_amount(value, True)
-            else:
-                v_str = '--'
-
-            balance_str = self.format_amount(balance)
-
-            if tx_hash:
-                label, is_default_label = self.wallet.get_label(tx_hash)
-            else:
-                label = _('Pruned transaction outputs')
-                is_default_label = False
-
-            # NOTE: just show 5 on a row but get 6. The last one is ID of that row.
-            results.append(('', time_str, label, v_str, balance_str, tx_hash))
-
-            # item = QTreeWidgetItem( [ '', time_str, label, v_str, balance_str] )
-            # item.setFont(2, QFont(MONOSPACE_FONT))
-            # item.setFont(3, QFont(MONOSPACE_FONT))
-            # item.setFont(4, QFont(MONOSPACE_FONT))
-            # if value < 0:
-            #    item.setForeground(3, QBrush(QColor("#BC1E1E")))
-            # if tx_hash:
-            #    item.setData(0, Qt.UserRole, tx_hash)
-            #    item.setToolTip(0, "%d %s\nTxId:%s" % (conf, _('Confirmations'), tx_hash) )
-            # if is_default_label:
-            #    item.setForeground(2, QBrush(QColor('grey')))
-
-            # item.setIcon(0, icon)
-            # self.history_list.insertTopLevelItem(0,item)
-
-        return results
 
     def emit(self, signal):
         """Dummy function to avoid call error"""
