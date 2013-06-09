@@ -1559,15 +1559,13 @@ class ElectrumMainGui(ElectrumGui):
                 self.last_instance.clear_widgets()
             self.last_instance = instance
 
-            context_menu = Bubble(orientation='vertical', size_hint=(None, None), size=('160dp', '80dp'),
-                                  arrow_pos='bottom_mid')
-            instance.add_widget(context_menu)
-
+            context_menu = Bubble(orientation='vertical', size_hint=(None, None),
+                                  size=('160dp', '80dp'), arrow_pos='bottom_mid')
             context_menu.pos = instance.pos  # TODO: more cases
-            button_detail = Button(text=_('Details'), on_press=show_tx_details)
-            button_edit = Button(text=_('Edit description'), on_press=tx_label_clicked)
-            context_menu.add_widget(button_detail)
-            context_menu.add_widget(button_edit)
+            context_menu.add_widget(Button(text=_('Details'), on_press=show_tx_details))
+            context_menu.add_widget(Button(text=_('Edit description'), on_press=tx_label_clicked))
+
+            instance.add_widget(context_menu)
 
         self.history_view = GridView(
             headers=["", _("Date"), _("Description"), _("Amount"), _("Balance")],
