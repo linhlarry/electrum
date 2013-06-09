@@ -25,6 +25,7 @@ from decimal import Decimal
 
 from kivy.app import App
 from kivy.clock import Clock
+from kivy.core.clipboard import Clipboard
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.label import Label
 from kivy.uix.button import Button
@@ -1572,6 +1573,7 @@ class ElectrumMainGui(ElectrumGui):
             widths=[50, 150, 400, 100, 100],
             on_context_menu=on_context_menu,
         )
+        self.update_history_tab()
 
         return self.history_view.layout
 
@@ -1839,16 +1841,182 @@ class ElectrumMainGui(ElectrumGui):
         pass
 
     def create_receive_tab(self):
+        self.last_instance = None
+
+        def on_context_menu(instance):
+            address = instance.parent.children[3].text
+            if not address or not is_valid(address): return
+
+            def copy_to_clipboard(_instance):
+                Clipboard.put(instance.parent.children[3].text, 'UTF8_STRING')
+                if self.last_instance is not None:
+                    self.last_instance.clear_widgets()
+
+            def edit_label(_instance):
+                def save_label(__instance):
+                    if text_input.text:
+                        instance.parent.children[2].text = text_input.text
+                    dialog.close()
+
+                text = instance.parent.children[2].text
+                text_input = TextInput(text=text, size_hint_y=None, height='30dp', multiline=False, focus=True)
+                text_input.select_all()
+                dialog = Dialog(title=_('Edit label'), size=('600dp', '130dp'))
+                dialog.add_content(text_input)
+                dialog.add_button(Button(text=_("Cancel"), on_press=lambda instance: dialog.close()))
+                dialog.add_button(Button(text=_('OK'), on_press=save_label))
+                dialog.open()
+
+                if self.last_instance is not None:
+                    self.last_instance.clear_widgets()
+
+            def show_private_key(_instance):
+                # NOTE: equivalent to @protected
+                def protected_show_private_key(instance=None, password=None):
+                    try:
+                        pk = self.wallet.get_private_key(address, password)
+                    except BaseException, e:
+                        self.info_box(content_text=str(e))
+                        return
+
+                    dialog = Dialog(title=_('Private key'))
+                    dialog.add_content(Label(text='Address'+ ':\n' + address + '\n\n' + _('Private key') + ':\n' + pk))
+                    dialog.add_button(Button(text=_('OK'), on_press=lambda instance: dialog.close()))
+                    dialog.open()
+
+                if self.wallet.use_encryption:
+                    return self.password_required_dialog(post_ok=protected_show_private_key)
+                return protected_show_private_key()
+
+            def show_sign_message(_instance):
+                def sign_message():
+                    vbox = BoxLayout(orientation='vertical')
+                    vbox.add_widget(Label(text=_('Address'), size_hint_y=None, height='30dp'))
+                    self.sign_address = TextInput(text=address, size_hint_y=None, height='30dp')
+                    vbox.add_widget(self.sign_address)
+                    vbox.add_widget(Label(text=_('Message'), size_hint_y=None, height='30dp'))
+                    self.sign_message = TextInput()
+                    vbox.add_widget(self.sign_message)
+                    vbox.add_widget(Label(text=_('Signature'), size_hint_y=None, height='30dp'))
+                    self.sign_signature = TextInput()
+                    vbox.add_widget(self.sign_signature)
+                    return vbox
+
+                def verify_message():
+                    vbox = BoxLayout(orientation='vertical')
+                    vbox.add_widget(Label(text=_('Address'), size_hint_y=None, height='30dp'))
+                    self.verify_address = TextInput(size_hint_y=None, height='30dp')
+                    vbox.add_widget(self.verify_address)
+                    vbox.add_widget(Label(text=_('Message'), size_hint_y=None, height='30dp'))
+                    self.verify_message = TextInput()
+                    vbox.add_widget(self.verify_message)
+                    vbox.add_widget(Label(text=_('Signature'), size_hint_y=None, height='30dp'))
+                    self.verify_signature = TextInput()
+                    vbox.add_widget(self.verify_signature)
+                    return vbox
+
+                def on_ok_press(__instance):
+                    if tabs.current_tab.text == _('Sign'):
+                        # NOTE: equivalent to @protected
+                        def protected_do_sign_message(instance=None, password=None):
+                            try:
+                                sig = self.wallet.sign_message(self.sign_address.text, self.sign_message.text, password)
+                                self.sign_signature.text = sig
+                            except BaseException, e:
+                                self.info_box(content_text=str(e))
+
+                        if self.wallet.use_encryption:
+                            return self.password_required_dialog(post_ok=protected_do_sign_message)
+                        return protected_do_sign_message()
+
+                    else:  # _('Verify')
+                        if self.wallet.verify_message(self.verify_address.text, self.verify_signature.text, self.verify_message.text):
+                            self.info_box(content_text=_("Signature verified"))
+                        else:
+                            self.info_box(content_text=_("Error: wrong signature"))
+
+                tabs = TabbedPanel(do_default_tab=False)
+                self.add_tab(tabs, sign_message(), _('Sign'))
+                self.add_tab(tabs, verify_message(), _('Verify'))
+
+                dialog = Dialog(title=_('Sign Message'), size=('400dp', '400dp'))
+                dialog.add_content(tabs)
+                dialog.add_button(Button(text=_('Close'), on_press=lambda instance: dialog.close()))
+                dialog.add_button(Button(text=_('OK'), on_press=on_ok_press))
+                dialog.open()
+
+                if self.last_instance is not None:
+                    self.last_instance.clear_widgets()
+                self.last_instance = instance
+
+            if self.last_instance is not None:
+                self.last_instance.clear_widgets()
+            self.last_instance = instance
+
+            context_menu = Bubble(orientation='vertical', size_hint=(None, None),
+                                  size=('160dp', '160dp'), arrow_pos='bottom_mid')
+            context_menu.pos = instance.pos  # TODO: more cases
+            context_menu.add_widget(Button(text=_('Copy to clipboard'), on_press=copy_to_clipboard))
+            context_menu.add_widget(Button(text=_('Edit label'), on_press=edit_label))
+            context_menu.add_widget(Button(text=_('Private key'), on_press=show_private_key))
+            context_menu.add_widget(Button(text=_('Sign message'), on_press=show_sign_message))
+
+            if address in self.wallet.imported_keys:
+                def delete_imported_key():
+                    def on_ok_press(__instance):
+                        self.wallet.delete_imported_key(address)
+                        self.update_receive_tab()
+                        self.update_history_tab()
+                    dialog = Dialog(title=_('Delete imported key'))
+                    dialog.add_content(Label(text=_("Do you want to remove")+" %s "%addr +_("from your wallet?")))
+                    dialog.add_button(Button(text=_('Cancel'), on_press=lambda instance: dialog.close()))
+                    dialog.add_button(Button(text=_('OK'), on_press=on_ok_press))
+                    dialog.open()
+
+                    if self.last_instance is not None:
+                        self.last_instance.clear_widgets()
+                    self.last_instance = instance
+
+                context_menu.add_widget(Button(text=_('Remove from wallet'), on_press=delete_imported_key))  # TODO: test more this feature
+                # TODO: increase size on context menu
+
+            if self.expert_mode:
+                # TODO: show frozen, prioritied rows in different color as original code
+                def toggle_freeze(_instance):
+                    if address in self.wallet.frozen_addresses:
+                        self.wallet.unfreeze(address)
+                    else:
+                        self.wallet.freeze(address)
+                    self.update_receive_tab()
+            
+                    if self.last_instance is not None:
+                        self.last_instance.clear_widgets()
+                    self.last_instance = instance
+
+                def toggle_priority(_instance):
+                    if address in self.wallet.prioritized_addresses:
+                        self.wallet.unprioritize(address)
+                    else:
+                        self.wallet.prioritize(address)
+                    self.update_receive_tab()
+
+                    if self.last_instance is not None:
+                        self.last_instance.clear_widgets()
+                    self.last_instance = instance
+
+                t = _("Unfreeze") if address in self.wallet.frozen_addresses else _("Freeze")
+                context_menu.add_widget(Button(text=t, on_press=toggle_freeze))
+                t = _("Unprioritize") if address in self.wallet.prioritized_addresses else _("Prioritize")
+                context_menu.add_widget(Button(text=t, on_press=toggle_priority))
+                context_menu.height = '240dp'  # TODO: find better way to increase size on context menu
+  
+            instance.add_widget(context_menu)
+
         self.receive_list = GridView(
             headers=[_('Address'), _('Label'), _('Balance'), _('Tx')],
             widths=[350, 250, 100, 100],
+            on_context_menu=on_context_menu,
         )
-
-        # l.setContextMenuPolicy(Qt.CustomContextMenu)
-        # l.customContextMenuRequested.connect(self.create_receive_menu)
-        # self.connect(l, SIGNAL('itemDoubleClicked(QTreeWidgetItem*, int)'), lambda a, b: self.address_label_clicked(a,b,l,0,1))
-        # self.connect(l, SIGNAL('itemChanged(QTreeWidgetItem*, int)'), lambda a,b: self.address_label_changed(a,b,l,0,1))
-        # self.connect(l, SIGNAL('currentItemChanged(QTreeWidgetItem*, QTreeWidgetItem*)'), lambda a,b: self.current_item_changed(a))
 
         return self.receive_list.layout
 
