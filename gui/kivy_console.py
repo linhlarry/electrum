@@ -4,6 +4,8 @@ import sys, os, re
 import traceback, platform
 from kivy.core.window import Keyboard
 from kivy.uix.codeinput import CodeInput
+from kivy.properties import StringProperty, ListProperty, DictProperty
+
 from electrum import util
 
 
@@ -16,16 +18,23 @@ else:
 
 
 class Console(CodeInput):
-    def __init__(self, prompt='>> ', startup_message='', parent=None):
-        super(Console, self).__init__()
 
-        self.prompt = prompt
-        self.history = []
-        self.namespace = {}
+    prompt = StringProperty('>> ')
+    '''String representing the Prompt message'''
+
+    startup_message = StringProperty('')
+    '''Startup Message to be displayed in the Console if any'''
+
+    history = ListProperty([])
+    '''History of the console'''
+
+    namespace = DictProperty({})
+    '''Dict representing the current namespace of the console'''
+
+    def __init__(self, **kwargs):
+        super(Console, self).__init__(**kwargs)
         self.construct = []
-
-        self.showMessage(startup_message)
-
+        self.showMessage(self.startup_message)
         self.updateNamespace({'run':self.run_script})
         self.set_json(False)
 
