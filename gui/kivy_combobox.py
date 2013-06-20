@@ -21,6 +21,8 @@ Builder.load_string('''
 <ComboBox>:
     background_normal: 'atlas://data/images/defaulttheme/spinner'
     background_down: 'atlas://data/images/defaulttheme/spinner_pressed'
+    on_key:
+        if self.items: x, y = zip(*self.items); self.text = y[x.index(args[1])]
 ''')
 
 

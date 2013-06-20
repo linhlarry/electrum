@@ -1,0 +1,1255 @@
+#:import _ electrum_gui.i18n._
+#:import WipeTransition kivy.uix.screenmanager.WipeTransition
+
+<-IconButton@Button>
+    size_hint_x: None
+    width: self.height
+    source: ''
+    Widget:
+        id: border
+        canvas:
+            Color:
+                rgba: 1, 1, 1, 1 if root.state != 'normal' else 0
+            BorderImage:
+                pos: root.pos
+                size: root.size
+                border: 10, 10, 10, 10
+                source: 'icons/icon_border.png'
+    Image:
+        size_hint: None, None
+        size: root.width*.81, root.height *.81
+        center: root.center
+        allow_stretch: True
+        source: root.source
+
+
+<InfoButton>
+    text_size: self.size
+    valign: 'middle'
+    halign: 'center'
+
+
+<InfoLayout@BoxLayout+InfoContent>
+
+
+<InfoLabel@Label>
+    text_size: self.size
+    valign: 'middle'
+    halign: 'center'
+
+
+<Dialog>
+    size_hint: None, None
+    BoxLayout:
+        id: layout
+        orientation: 'vertical'
+
+        BoxLayout:
+            id: layout_content
+            orientation: 'vertical'
+            padding: root.content_padding
+
+        BoxLayout:
+            id: layout_buttons
+            size_hint: 1, None
+            height: root.buttons_height
+            padding: root.buttons_padding
+
+
+<InfoDialog>
+    title:_('Message')
+    BoxLayout:
+        orientation: 'vertical'
+        RelativeLayout:
+            id: info_content
+        BoxLayout:
+            size_hint: 1, None
+            height: '40dp'
+            spacing: '4dp'
+            id: buttons_layout
+
+<SignVerifyDialog>
+    title: _('Sign Message')
+    size_hint: None, None
+    size: '400dp', '340dp'
+    buttons: [_('Close'), _('Ok')]
+    on_release: if args[1].text == _('Close'): self.close()
+    InfoLayout:
+        padding: '2dp'
+        TabbedScreens:
+            id: tabs
+            do_default_tab: False
+            Screen:
+                id: screen_sign
+                name: 'screen_sign'
+                BoxLayout:
+                    padding: '2dp'
+                    spacing: '2dp'
+                    orientation: 'vertical'
+                    InfoLabel:
+                        text: _('Address')
+                        size_hint_y: None
+                        height: '30dp'
+                    TextInput:
+                        id: sign_address
+                        size_hint_y: None
+                        height: '30dp'
+                        text: root.address
+                    InfoLabel:
+                        text: _('Message')
+                        size_hint_y: None
+                        height: '30dp'
+                    TextInput:
+                        id: sign_message
+                        size_hint_y: None
+                        height: '30dp'
+                    InfoLabel:
+                        text: _('Signature')
+                        size_hint_y: None
+                        height: '30dp'
+                    TextInput:
+                        id: sign_signature
+                        size_hint_y: None
+                        height: '30dp'
+            Screen:
+                id: screen_verify
+                name: 'screen_verify'
+                BoxLayout:
+                    padding: '2dp'
+                    spacing: '2dp'
+                    orientation: 'vertical'
+                    InfoLabel:
+                        text: _('Address')
+                        size_hint_y: None
+                        height: '30dp'
+                    TextInput:
+                        id: verify_address
+                        size_hint_y: None
+                        height: '30dp'
+                    InfoLabel:
+                        text: _('Message')
+                        size_hint_y: None
+                        height: '30dp'
+                    TextInput:
+                        id: verify_message
+                        size_hint_y: None
+                        height: '30dp'
+                    InfoLabel:
+                        text: _('Signature')
+                        size_hint_y: None
+                        height: '30dp'
+                    TextInput:
+                        id: verify_signature
+                        size_hint_y: None
+                        height: '30dp'
+            TabbedPanelHeader:
+                text: _('Sign')
+                screen: screen_sign.name
+            TabbedPanelHeader:
+                text: _('Verify')
+                screen: screen_verify.name
+
+
+<PasswordRequiredDialog>
+    title: _('Password')
+    buttons: [_('Ok'), _('Cancel')]
+    on_release: if args[1].text == _('Cancel'): self.close()
+    size_hint: None, None
+    size: '320dp', '220dp'
+    InfoLayout:
+        padding: '4dp'
+        spacing: '5dp'
+        orientation: 'vertical'
+        InfoLabel:
+            text: _('Please enter password')
+        TextInput:
+            id: password
+            size_hint_y: None
+            height: '38sp'
+            multiline: False
+            password: True
+
+
+<PrivateKeyDialog>
+    title: _('Private Key')
+    buttons: [_('Ok')]
+    on_release: self.close()
+    size_hint: None, None
+    size: '320dp', '320dp'
+    InfoLayout:
+        padding: '2dp'
+        spacing: '2dp'
+        orientation: 'vertical'
+        InfoLabel:
+            text: _('Address')
+        TextInput:
+            readonly: True
+            text: root.address
+        InfoLabel:
+            text: _('Private Key')
+        TextInput:
+            text: root.private_key
+            readonly: True
+
+
+<SaveDialog>
+    size_hint: 0.9, 0.9
+    content: layout
+    file_chooser: file_chooser
+    text_input: text_input
+    cancel_button: cancel_button
+    save_button: save_button
+
+    BoxLayout:
+        id: layout
+        orientation: 'vertical'
+
+        BoxLayout:
+            id: layout_content
+            orientation: 'vertical'
+            padding: '2dp'
+            FileChooserListView:
+                id: file_chooser
+                path: root.path
+                on_selection: root.filename = args[1].split('/')[-1]
+            TextInput:
+                id: text_input
+                size_hint_y: None
+                height: '30dp'
+                multiline: False
+                text: root.filename
+
+        BoxLayout:
+            id: layout_buttons
+            size_hint: 1, None
+            height: '40dp'
+            padding: '2dp'
+            Button:
+                id: cancel_button
+                text: _("Cancel")
+                on_press: root.close()
+
+            Button:
+                id: save_button
+                text: _("Save")
+
+
+<ChangePasswordDialog>
+    auto_dismiss: False
+    title: _('Password')
+    size_hint: None, None
+    size: '400dp', '300dp'
+    buttons: [_('Cancel'), _('Ok')]
+    on_release: if args[1].text == _('Cancel'): self.close()
+    InfoLayout:
+        Image:
+            size_hint_x: None
+            width: '64dp'
+            source: 'icons/unlock.png' if not app.wallet.use_encryption else 'icons/lock.png'
+        BoxLayout:
+            orientation: 'vertical'
+            pading: '5dp'
+            InfoLabel
+                text: root.message
+            GridLayout:
+                cols: 2
+                size_hint: 1, None
+                height: self.minimum_height
+                padding: '5dp'
+                spacing: '2dp'
+                InfoLabel:
+                    text: _('Password')
+                    size_hint: 1, None
+                    disabled: ti_password.disabled
+                    opacity: ti_password.opacity
+                    height: '32sp'
+                TextInput:
+                    id: ti_password
+                    password: True
+                    disabled: True if root.mode == 'new' else False
+                    opacity: 0 if self.disabled else 1
+                    multiline: False
+                    size_hint: 1, None
+                    height: '32sp'
+                InfoLabel:
+                    text: 'New Password'
+                    size_hint_y: None
+                    height: '32sp'
+                TextInput:
+                    id: ti_new_password
+                    password: True
+                    size_hint_y: None
+                    height: '32sp'
+                InfoLabel:
+                    text: _('Confirm Password')
+                    size_hint: 1, None
+                    height: '32sp'
+                TextInput:
+                    id: ti_confirm_password
+                    password: True
+                    multiline: False
+                    size_hint: 1, None
+                    height: '32sp'
+
+<CreateRestoreDialog>
+    size_hint: None, None
+    size: '320dp', '320dp'
+    title: _('Create or Restore')
+    InfoLayout:
+        padding: '5dp'
+        spacing: '5dp'
+        Image:
+            size_hint_x: None
+            width: '64dp'
+            source: 'icons/info.png'
+        InfoLabel
+            text:
+                _("Wallet file not found!!")+\
+                "\n\n" + _("Do you want to create a new wallet ")+\
+                _("or restore an existing one?")
+
+<InitSeedDialog>
+    size_hint: None, None
+    size: '450dp', '400dp'
+    title: 'Electrum - ' + _('Seed')
+    buttons: [_('OK')]
+    auto_dismiss: False
+    InfoLayout:
+        orientation: 'vertical'
+        BoxLayout:
+            spacing: '4dp'
+            BoxLayout:
+                orientation: 'vertical'
+                padding: '2dp'
+                spacing: '2dp'
+                BoxLayout:
+                    spacing: '4dp'
+                    size_hint_y: .5
+                    Image:
+                        source: 'icons/seed.png'
+                        size_hint_x: None
+                        width: '32dp'
+                    InfoLabel:
+                        text: _('Your wallet generation seed is:')
+                TextInput:
+                    text: root.seed_msg
+                    readonly: True
+            QRCodeWidget:
+                data: root.seed
+                size_hint: None, None
+                size: '120dp', '120dp'
+        InfoLabel
+            size_hint_y:.9
+            markup: True
+            text: root.message
+
+
+<VerifySeedDialog>
+    size_hint: None, None
+    size: '320dp', '320dp'
+    title: _("Seed confirmation")
+    padding: '2dp'
+    spacing: '2dp'
+    buttons: [_('Ok'), _('Cancel')]
+    on_release: if args[1].text == _('Cancel'): app.stop()
+    InfoLayout:
+        padding: '2dp'
+        spacing: '2dp'
+        orientation: 'vertical'
+        InfoLabel
+            text:
+                _('Your seed is important! To make sure that you have properly'+
+                ' saved your seed, please type it here.\n\n Your seed can ' +
+                'be entered as a sequence of words or as a hexadecimal string.')
+        TextInput:
+            id: text_input_seed
+
+
+<RestoreSeedDialog>
+    title: _("Restore Seed")
+    padding: '2dp'
+    spacing: '2dp'
+    auto_dismiss: False
+    size_hint: None, None
+    size: '320dp', '320dp'
+    buttons: [_('Cancel'), _('Ok')]
+    on_release: if args[1].text == _('Cancel'): app.stop()
+    InfoLayout:
+        padding: '5dp'
+        spacing: '2dp'
+        orientation: 'vertical'
+        InfoLabel
+            size_hint_y: .5
+            text:
+                _('Please enter your wallet seed (or your master public key' +
+                ' if you want to create a watching-only wallet).')
+        TextInput:
+            size_hint_y: None
+            height: '69dp'
+            id: text_input_seed
+            hint_text:
+                _('Your seed can be entered as a sequence of' +
+                ' words or as a hexadecimal string')
+        BoxLayout:
+            size_hint_y: None
+            height: '45sp'
+            padding: '2dp'
+            spacing: '2dp'
+            InfoLabel:
+                text: _('Gap Limit')
+                size_hint_x: None
+                width: self.texture_size[1] + dp(5)
+                halign: 'left'
+            TextInput:
+                id: text_input_gap
+                text: _('5')
+                multiline: False
+            Button:
+                text: '?'
+                size_hint_x: None
+                width: '41sp'
+                on_release:
+                    pos = self.to_window(text_input_gap.center_x, self.top)
+                    app.show_info_bubble(text=_('Keep the default value unless'+
+                    ' you modified this parameter in your wallet.'),
+                    pos=(pos[0] , pos[1]))
+
+
+<MessageBox>
+    size_hint: None, None
+    size: '320dp', '320dp'
+    buttons: ['Ok']
+    on_release: self.dismiss()
+    InfoLayout:
+        padding: '2dp'
+        Image:
+            size_hint_x: None
+            width: '64dp'
+            source: root.image
+        InfoLabel
+            text: root.message
+            markup: True
+
+
+<MessageBoxExit>
+    title:_('Exiting')
+    image: 'icons/error.png'
+    on_release: app.stop()
+
+
+<MessageBoxError>
+    title:_('Error')
+    image: 'icons/error.png'
+    on_release: self.dismiss()
+
+
+<TakeInputDialog>
+    title: _('message here')
+    size_hint: None, None
+    size: '400sp', '160sp'
+    buttons: [_('Cancel'), _('Ok')]
+    on_release: if args[1].text == _('Cancel'): self.close()
+    InfoLayout:
+        padding: '2dp'
+        TextInput:
+            id: ti
+            text: root.text
+            readonly: root.readonly
+            multiline: False
+            on_parent:
+                self.focus = True
+                self.select_all()
+
+<EditLabelDialog>:
+    title: _('Edit Label')
+
+<EditDescriptionDialog>:
+    title: _('Edit Description')
+    size: '600dp', '130dp'
+
+<ImportPrivateKeysDialog>
+    title: _('Import Private Keys')
+    size: '320dp', '320dp'
+    buttons: [_('Cancel'), _('Import')]
+
+<ShowMasterPublicKeyDialog>
+    title: _('Master Public Key')
+    size: '320dp', '320dp'
+    buttons: [_('Ok')]
+    on_release: self.close()
+    readonly: True
+
+<NewContactDialog>
+    title: _('New Contact')
+    padding: '2dp'
+    spacing: '2dp'
+    auto_dismiss: False
+    size_hint: None, None
+    size: '320dp', '220dp'
+    buttons: [_('Cancel'), _('Ok')]
+    on_release:
+        if args[1].text == _('Cancel'): self.dismiss()
+        if args[1].text == _('Ok'): root.save_new_contact()
+    InfoLayout:
+        orientation: 'vertical'
+        padding: '5dp'
+        spacing: '2dp'
+        InfoLabel:
+            text: _('Address') + ':'
+        TextInput:
+            id: ti
+            multiline: False
+
+
+<InfoBubble>
+    size_hint: None, None
+    width: '270dp'
+    height: lbl.texture_size[1] + dp(20)
+    on_touch_down: self.hide()
+    BoxLayout:
+        orientation: 'vertical'
+        padding: '5dp'
+        spacing: '2dp'
+        Label:
+            id: lbl
+            text: root.message
+            text_size: self.width, None
+
+
+<StatusBar>
+    # Themeing
+    #canvas:
+    #    BorderImage:
+    #        border: 5, 5, 5, 5
+    #        size: self.size
+    #        pos: self.pos
+    #        source: 'icons/icon_border.png'
+    size_hint: (1, None)
+    height: '41dp'
+    padding: '5dp'
+    spacing: '5dp'
+    root: None
+    BoxLayout
+        id: layout_text
+        InfoLabel:
+            text: root.text
+            halign: 'left'
+    GridLayout
+        id: layout_buttons
+        rows: 1
+        size_hint: None, 1
+        spacing: '5dp'
+        width: self.minimum_width
+        IconButton:
+            id: lock_icon
+            source: 'icons/lock.png' if app.wallet.use_encryption else 'icons/unlock.png'
+            on_release:
+                if app.wallet.seed: app.gui.change_password_dialog(self)
+        IconButton:
+            id: preferences_icon
+            source: 'icons/preferences.png'
+            on_release:
+                app.gui.main_gui.show_settings_dialog(self)
+        IconButton:
+            id: seed_icon
+            source: 'icons/seed.png'
+            on_release:
+                if app.wallet.seed: app.gui.main_gui.protected_seed_dialog(self)
+        IconButton:
+            id: status_icon
+            source:
+                'icons/status_disconnected.png' if root.text ==_("Not connected")\
+                else ('icons/status_waiting.png' if root.text == _("Synchronizing...")\
+                else 'icons/status_connected.png')
+            on_release:
+                app.root.current = 'screen_network'
+#
+# Screens
+#
+<TabbedScreens>
+    manager: manager
+    #background_image: 'data/dark/background.png'
+    ScreenManager:
+        id: manager
+
+
+<ContactInput@BoxLayout>
+    help_message: _('Empty help')
+    hint_text: _('Empty hint')
+    label: _('Empty Label')
+    label_width: '90dp'
+    text: ti.text
+    padding: '2dp'
+    spacing: '2dp'
+    InfoLabel:
+        text: root.label
+        size_hint_x: None
+        width: root.label_width
+        halign: 'left'
+    TextInput:
+        id: ti
+        hint_text: root.hint_text
+        multiline: False
+    Button:
+        text: '?'
+        size_hint_x: None
+        width: self.height
+        on_release: app.show_info_bubble(text=root.help_message, pos=(self.to_window(ti.center_x, self.center_y)), arrow_pos='right_mid')
+
+
+<ScreenSend@Screen>
+    BoxLayout:
+        padding: '5dp'
+        spacing: '5dp'
+        orientation: 'vertical'
+        ContactInput:
+            id: payto_e
+            size_hint_y: None
+            height: '38dp'
+            label: _('Pay to')
+            hint_text: ''
+            help_message:
+                _('Recipient of the funds. You may enter') + '::\n\n' +\
+                _('- A Bitcoin address\n') +\
+                _('- A Label from your List of Contacts (a list of complitions will be proposed)')+'\n'+\
+                _('- An alias (e-mail like address that forwards to a bitcoin address)')
+        ContactInput:
+            id: message_e
+            size_hint_y: None
+            height: '38dp'
+            label: _('Description')
+            hint_text: ''
+            help_message:
+                _('Description of the transaction (not mandatory).') + '\n\n' +\
+                _('The description is not sent to the recipient of the funds. It is stored in your wallet file, and displayed in the \'History\' tab.')
+        ContactInput:
+            id: amount_e
+            size_hint_y: None
+            height: '38dp'
+            label: _('Amount')
+            hint_text: _('in') + ' BTC'
+            help_message:
+                _('Amount to be sent.') + '\n\n' \
+                + _('The amount will be displayed in red if you do not have enough funds in your wallet. Note that if you have frozen some of your addresses, the available funds will be lower than your total balance.') \
+                + '\n\n' + _('Keyboard shortcut: type "!" to send all your coins.')
+        ContactInput:
+            id: fee_e
+            size_hint_y: None
+            height: '38dp'
+            label: _('Fee')
+            hint_text: _('in') + ' BTC'
+            help_message:
+                _('Bitcoin transactions are in general not free. A transaction fee is paid by the sender of the funds.') + '\n\n'\
+                + _('The amount of fee can be decided freely by the sender. However, transactions with low fees take more time to be processed.') + '\n\n'\
+                + _('A suggested fee is automatically added to this field. You may override it. The suggested fee increases with the size of the transaction.')
+        BoxLayout
+            spacing: '2dp'
+            size_hint: 1, None
+            height: '41dp'
+            Widget:
+                size_hint_x: None
+                width: fee_e.label_width
+            BoxLayout:
+                Button:
+                    text: _('Send') if app.wallet.seed else _('Create unsigned transaction')
+                    on_release: app.gui.main_gui.do_send(self)
+                Button:
+                    text: _('Clear')
+                    on_release:
+                        payto_e.ids.ti.text = ''
+                        message_e.ids.ti.text = ''
+                        amount_e.ids.ti.text = ''
+                        fee_e.ids.ti.text = ''
+        Widget:
+            # take up the rest of the space
+
+
+<ContextButton>
+    text_size: self.size
+    valign: 'middle'
+    halign: 'center'
+
+
+<ContextMenu>
+    BoxLayout:
+        id: menu_content
+        orientation: root.orientation
+        padding: '2dp'
+        spacing: '2dp'
+
+
+<GridView>
+    header_view: header_view
+    content_view: content_view
+    ScrollView:
+        id: scrl
+        do_scroll_y: False
+        RelativeLayout:
+            size_hint_x: None
+            width: max(scrl.width, dp(sum(root.widths)))
+            BoxLayout:
+                orientation: 'vertical'
+                padding: '0dp', '2dp'
+                BoxLayout:
+                    id: header_box
+                    orientation: 'vertical'
+                    size_hint: 1, None
+                    height: '30dp'
+                    ListView:
+                        id: header_view
+                BoxLayout:
+                    id: content_box
+                    orientation: 'vertical'
+                    ListView:
+                        id: content_view
+
+
+<ScreenContacts>
+    BoxLayout:
+        orientation: 'vertical'
+        GridView:
+            id: contacts_list
+            headers: [_('Address'), _('Label'), _('Tx')]
+            widths: [350, 350, 200]
+        Button:
+            text: _("New")
+            size_hint: None, None
+            size: '190dp', '40dp'
+            on_release: root.add_new_contact()
+
+
+<ScreenHistory>
+    history_view: history_list
+    GridView:
+        id: history_list
+        headers: ["", _("Date"), _("Description"), _("Amount"), _("Balance")]
+        widths: [50, 150, 400, 100, 100]
+
+
+<ScreenReceive>
+    receive_view: receive_list
+    GridView:
+        id: receive_list
+        headers: [_('Address'), _('Label'), _('Balance'), _('Tx')]
+        widths: [350, 250, 100, 100]
+
+<ScreenConsole>
+    Console:
+        id: console
+
+
+<MainScreen>
+    BoxLayout:
+        spacing: '2dp'
+        orientation: 'vertical'
+        TabbedScreens:
+            do_default_tab: False
+            id: panel
+            ScreenHistory:
+                id: screen_history
+                name: 'screen_history'
+            ScreenSend:
+                id: screen_send
+                name: 'screen_send'
+            ScreenReceive:
+                id: screen_receive
+                name: 'screen_receive'
+            ScreenContacts:
+                id: screen_contacts
+                name: 'screen_contacts'
+            ScreenConsole:
+                id: screen_console
+                name: 'screen_console'
+            TabbedPanelHeader:
+                text: _('History')
+                screen: screen_history.name
+            TabbedPanelHeader:
+                text: _('Send')
+                screen: screen_send.name
+            TabbedPanelHeader:
+                text: _('Receive')
+                screen: screen_receive.name
+            TabbedPanelHeader:
+                text: _('Contacts')
+                screen: screen_contacts.name
+            TabbedPanelHeader:
+                text: _('Console')
+                screen: screen_console.name
+        StatusBar:
+            id: status_bar
+
+<NetworkScreen>
+    server_port: txt_server_port
+    server_host: txt_server_host
+    server_protocol: cmb_protocols
+    servers_view: servers_view
+    proxy_port: txt_proxy_port
+    proxy_host: txt_proxy_host
+    proxy_mode: cmb_proxy
+    autocycle_cb: chk_random_servers
+
+    BoxLayout: 
+        orientation: 'vertical'
+        padding: '2dp'
+        spacing: '2dp'
+        InfoLabel:
+            id: title
+            size_hint_y: None
+            height: '28dp'
+            text: _('Server')
+        Widget:
+            canvas:
+                Color:
+                    rgba: 0, .79, .89, 1
+                Rectangle:
+                    size: self.size
+                    pos: self.pos
+            size_hint_y: None
+            height: '1dp'
+        BoxLayout:
+            size_hint_y: None
+            height: '32dp'
+            Image:
+                source: 'icons/network.png'
+                size_hint_x: None
+                width: '32dp'
+            InfoLabel:
+                id: status
+                text: root.status
+        BoxLayout:
+            padding: '2sp'
+            spacing: '2sp'
+            size_hint_y: None
+            height: '38dp'
+            InfoLabel:
+                id: lbl_server
+                text: _('Server') + ':'
+            ComboBox:
+                id: cmb_protocols
+                key: 'h'
+                items: zip(root.protocol_letters, root.protocol_names)
+                on_key:
+                    idx = root.protocol_letters.find(args[1])
+                    self.text = root.protocol_names[idx]
+                    root.on_change_protocol(*args)
+            TextInput:
+                id: txt_server_host
+                multiline: False
+            TextInput:
+                id: txt_server_port
+                multiline: False
+        BoxLayout:
+            GridView:
+                id: servers_view
+                headers:
+                    [_('Active Servers')\
+                    if root.interface and root.interface.servers else\
+                    _('Default Servers'), _('Limit')]
+                widths: 300, 75
+        BoxLayout:
+            padding:'2dp'
+            spacing: '2dp'
+            size_hint_y: None
+            height: '38dp'
+            InfoLabel: 
+                text: _('Proxy') + ':'
+            ComboBox:
+                id: cmb_proxy
+                key: 'None'
+                items: zip(root.proxy_keys, root.proxy_names)
+                on_key:
+                    idx = root.proxy_keys.index(args[1])
+                    self.text = root.proxy_names[idx]
+                    root.check_for_disable(*args)
+            TextInput:
+                id: txt_proxy_host
+                multiline: False
+            TextInput:
+                id: txt_proxy_port
+                multiline: False
+        BoxLayout:
+            spacing: '2dp'
+            size_hint_y: None
+            height: '22dp'
+            CheckBox:
+                id: chk_random_servers
+                active: True
+            InfoLabel:
+                text: _('Try random Servers if disconnected')
+        BoxLayout:
+            spacing: '2dp'
+            size_hint_y: None
+            height: '38dp'
+            Button:
+                text: _('Ok')
+                on_release:
+                    root.on_ok(*args)
+                    root.initialized = True
+            Button:
+                text: _('Cancel')
+                on_release:
+                    root.on_cancel(*args)
+                    root.initialized = True
+
+<SettingsScreen>:
+    BoxLayout: 
+        #size_hint: None, None
+        #size: '350dp', '320dp'
+        #pos_hint: {'center_x': .5, 'center_y':.5}
+        orientation: 'vertical'
+        padding: '2dp'
+        spacing: '2dp'
+        InfoLabel:
+            id: title
+            size_hint_y: None
+            height: '28dp'
+            text: _('Electrum_settings')
+        Widget:
+            canvas:
+                Color:
+                    rgba: 0, .79, .89, 1
+                Rectangle:
+                    size: self.size
+                    pos: self.pos
+            size_hint_y: None
+            height: '1dp'
+        TabbedScreens:
+            do_default_tab: False
+            Screen:
+                id: screen_diaplay
+                name: 'screen_diaplay'
+                GridLayout:
+                    padding: '2dp'
+                    spacing: '2dp'
+                    rows: 4
+                    cols: 3
+                    InfoLabel:
+                        text: _('Display zeros')
+                        size_hint_y: None
+                        height: '38dp'
+                    TextInput:
+                        id: st_nz_e
+                        multiline: False
+                        text: '0'
+                        size_hint_y: None
+                        height: '38dp'
+                    Button:
+                        text: '?'
+                        size_hint_x: None
+                        width: self.height
+                        size_hint_y: None
+                        height: '38dp'
+                        on_release:
+                            app.show_info_bubble(text=_('Number of zeros displayed after the decimal point. For example, if this is set to 2, "1." will be displayed as "1.00"'),\
+                            pos=self.to_window(self.center_x, self.top))
+                    InfoLabel:
+                        text: _('Languages')
+                        size_hint_y: None
+                        height: '38dp'
+                    ComboBox:
+                        id: st_lang_combo
+                        size_hint_y: None
+                        height: '38dp'
+                    Button:
+                        text: '?'
+                        size_hint_x: None
+                        width: self.height
+                        size_hint_y: None
+                        height: '38dp'
+                        on_release:
+                            app.show_info_bubble(text= _('Select which language is used in the GUI (after restart).'),\
+                            pos=self.to_window(self.center_x, self.top))
+                    InfoLabel:
+                        text: _('Currency')
+                        size_hint_y: None
+                        height: '38dp'
+                    ComboBox:
+                        id: st_cur_combo
+                        key: 'None'
+                        size_hint_y: None
+                        height: '38dp'
+                    Button:
+                        text: '?'
+                        size_hint_x: None
+                        width: self.height
+                        size_hint_y: None
+                        height: '38dp'
+                        on_release:
+                            app.show_info_bubble(text=_('Select which currency is used for quotes.'),\
+                            pos=self.to_window(self.center_x, self.top))
+                    InfoLabel:
+                        text: _('ExpertMode')
+                        size_hint_y: None
+                        height: '38dp'
+                    CheckBox:
+                        id: st_expert_cb
+                        size_hint_y: None
+                        height: '38dp'
+                    Button:
+                        text: '?'
+                        size_hint_x: None
+                        width: self.height
+                        size_hint_y: None
+                        height: '38dp'
+                        on_release:
+                            app.show_info_bubble(text=_('In expert mode, your client will:') + '\n'  \
+                            + _(' - Show change addresses in the Receive tab') + '\n'  \
+                            + _(' - Display the balance of each address') + '\n'  \
+                            + _(' - Add freeze/prioritize actions to addresses.'),\
+                            pos=self.to_window(self.center_x, self.top))
+            Screen:
+                id: screen_wallet
+                name: 'screen_wallet'
+                GridLayout:
+                    padding: '2dp'
+                    spacing: '2dp'
+                    rows: 4
+                    cols: 3
+                    InfoLabel:
+                        text: _('Transaction Fee')
+                        size_hint_y: None
+                        height: '38dp'
+                    TextInput:
+                        id: st_fee_e
+                        multiline: False
+                        size_hint_y: None
+                        height: '38dp'
+                    Button:
+                        text: '?'
+                        size_hint_x: None
+                        width: self.height
+                        size_hint_y: None
+                        height: '38dp'
+                        on_release:
+                            app.show_info_bubble(text=_('Fee per kilobyte of transaction.') + ' ' \
+                            + _('Recommended value') + ': ' + app.gui.main_gui.format_amount(50000),\
+                            pos=self.to_window(self.center_x, self.top))
+                    InfoLabel:
+                        text: _('Use Changed address')
+                        size_hint_y: None
+                        height: '38dp'
+                    CheckBox:
+                        id: st_usechange_cb
+                        active: app.wallet.use_change
+                        size_hint_y: None
+                        height: '38dp'
+                    Button:
+                        text: '?'
+                        size_hint_x: None
+                        width: self.height
+                        size_hint_y: None
+                        height: '38dp'
+                        on_release:
+                            app.show_info_bubble(text=_('Using change addresses makes it more difficult for other people to track your transactions.'),\
+                            pos=self.to_window(self.center_x, self.top))
+                    InfoLabel:
+                        text: _('Gap Limit')
+                        size_hint_y: None
+                        height: '38dp'
+                    TextInput:
+                        id: st_gap_e
+                        multiline: False
+                        text: "%d" % app.wallet.gap_limit
+                        multiline: False
+                        size_hint_y: None
+                        height: '38dp'
+                    Button:
+                        text: '?'
+                        size_hint_x: None
+                        width: self.height
+                        size_hint_y: None
+                        height: '38dp'
+                        on_release:
+                            app.show_info_bubble(text=_('The gap limit is the maximal number of contiguous unused addresses in your sequence of receiving addresses.') + '\n' \
+                            + _('You may increase it if you need more receiving addresses.') + '\n\n' \
+                            + _('Your current gap limit is') + ': %d' % app.wallet.gap_limit + '\n' \
+                            + _('Given the current status of your address sequence, the minimum gap limit you can use is:') + ' ' + '%d' % app.wallet.min_acceptable_gap() + '\n\n' \
+                            + _('Warning') + ': ' \
+                            + _('The gap limit parameter must be provided in order to recover your wallet from seed.') + ' ' \
+                            + _('Do not modify it if you do not understand what you are doing, or if you expect to recover your wallet without knowing it!'),\
+                            pos=self.to_window(self.center_x, self.top))
+                    InfoLabel:
+                        text: _('Base Unit')
+                        size_hint_y: None
+                        height: '38dp'
+                    ComboBox:
+                        id: st_unit_combo
+                        items: zip(['BTC', 'mBTC'], ['BTC', 'mBTC'])
+                        size_hint_y: None
+                        height: '38dp'
+                    Button:
+                        text: '?'
+                        size_hint_x: None
+                        width: self.height
+                        size_hint_y: None
+                        height: '38dp'
+                        on_release:
+                            app.show_info_bubble(text=_('Base unit of your wallet.') \
+                            + '\n1BTC=1000mBTC.\n' \
+                            + _(' This settings affects the fields in the Send tab'),\
+                            pos=self.to_window(self.center_x, self.top))
+            Screen:
+                id: screen_impex
+                name: 'screen_impex'
+                GridLayout:
+                    padding: '2dp'
+                    spacing: '2dp'
+                    rows: 5
+                    cols: 3
+                    InfoLabel:
+                        text: _('Labels')
+                        size_hint_y: None
+                        height: '38dp'
+                    BoxLayout:
+                        spacing: '2dp'
+                        size_hint_y: None
+                        height: '38dp'
+                        Button:
+                            id: export_labels
+                            text: _('Export')
+                            on_release: root.do_callback(*args)
+                        Button
+                            id: import_labels
+                            text: _('Import')
+                            on_release: root.do_callback(*args)
+                    Button:
+                        text: '?'
+                        size_hint_x: None
+                        width: self.height
+                        size_hint_y: None
+                        height: '38dp'
+                        on_release:
+                            app.show_info_bubble(text=_('Export your labels as json'),\
+                            pos=self.to_window(self.center_x, self.top))
+                    InfoLabel:
+                        text: _('History')
+                        size_hint_y: None
+                        height: '38dp'
+                    Button:
+                        id: export_history
+                        size_hint_y: None
+                        height: '38dp'
+                        text: 'Export'
+                        on_release: root.do_callback(*args)
+                    Button:
+                        text: '?'
+                        size_hint_y: None
+                        height: '38dp'
+                        size_hint_x: None
+                        width: self.height
+                        on_release:
+                            app.show_info_bubble(text=_('Export your transaction history as csv'),\
+                            pos=self.to_window(self.center_x, self.top))
+                    InfoLabel:
+                        text: _('Private Keys')
+                        size_hint_y: None
+                        height: '38dp'
+                    BoxLayout:
+                        spacing: '2dp'
+                        size_hint_y: None
+                        height: '38dp'
+                        Button:
+                            id: export_privkey
+                            text: _('Export')
+                            on_release: root.do_callback(*args)
+                        Button
+                            id: import_privkey
+                            text: _('Import')
+                            on_release: root.do_callback(*args)
+                    Button:
+                        text: '?'
+                        size_hint_x: None
+                        width: self.height
+                        size_hint_y: None
+                        height: '38dp'
+                        on_release:
+                            app.show_info_bubble(text=_('Import private key'),\
+                            pos=self.to_window(self.center_x, self.top))
+                    InfoLabel:
+                        text: _('Master Public Key')
+                        size_hint_y: None
+                        height: '38dp'
+                    Button:
+                        id: show_pubkey
+                        size_hint_y: None
+                        height: '38dp'
+                        text: _('Show')
+                        on_release: root.do_callback(*args)
+                    Button:
+                        text: '?'
+                        size_hint_x: None
+                        width: self.height
+                        size_hint_y: None
+                        height: '38dp'
+                        on_release:
+                            app.show_info_bubble(text=_('Your Master Public Key can be used to create receiving addresses, but not to sign transactions.') + ' ' \
+                            + _('If you give it to someone, they will be able to see your transactions, but not to spend your money.') + ' ' \
+                            + _('If you restore your wallet from it, a watching-only (deseeded) wallet will be created.'),\
+                            pos=self.to_window(self.center_x, self.top))
+                    InfoLabel:
+                        text: _('Load Transaction')
+                        size_hint_y: None
+                        height: '38dp'
+                    BoxLayout:
+                        spacing: '2dp'
+                        size_hint_y: None
+                        height: '38dp'
+                        Button:
+                            id: from_file
+                            text: _('From file')
+                            on_release: root.do_callback(*args)
+                        Button
+                            id:from_text
+                            text: _('From text')
+                            on_release: root.do_callback(*args)
+                    Button:
+                        text: '?'
+                        size_hint_x: None
+                        width: self.height
+                        size_hint_y: None
+                        height: '38dp'
+                        on_release:
+                            app.show_info_bubble(text=_("This will give you the option to sign or broadcast a transaction based on it's status."),\
+                            pos=self.to_window(self.center_x, self.top))
+            TabbedPanelHeader:
+                text: _('Display')
+                screen: screen_diaplay.name
+            TabbedPanelHeader:
+                text: _('Wallet')
+                screen: screen_wallet.name
+            TabbedPanelHeader:
+                text: _('Imp/Export')
+                screen: screen_impex.name
+        BoxLayout:
+            padding: '2dp'
+            spacing: '2dp'
+            size_hint_y: None
+            height: '38dp'
+            Button:
+                text: _('Cancel')
+                on_release:
+                    root.manager.current = 'main_screen'
+            Button:
+                text: _('Ok')
+                on_release:
+                    root.on_ok(*args)
+
+################################################
+##      This is our Root Widget of the app
+################################################
+<RootManager>:
+
+    main_screen: main_screen
+    screen_preferences: screen_preferences
+    screen_network: screen_network
+    transition: WipeTransition()
+
+    MainScreen:
+        name: 'main_screen'
+        id: main_screen
+    SettingsScreen:
+        name: 'screen_settings'
+        id: screen_preferences
+    NetworkScreen:
+        name: 'screen_network'
+        id: screen_network
