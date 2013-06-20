@@ -1,5 +1,5 @@
 #:import _ electrum_gui.i18n._
-
+#:import WipeTransition kivy.uix.screenmanager.WipeTransition
 
 <-IconButton@Button>
     size_hint_x: None
@@ -1242,6 +1242,7 @@
     main_screen: main_screen
     screen_preferences: screen_preferences
     screen_network: screen_network
+    transition: WipeTransition()
 
     MainScreen:
         name: 'main_screen'
