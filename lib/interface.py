@@ -99,7 +99,7 @@ class Interface(threading.Thread):
 
         msg_id = c.get('id')
         error = c.get('error')
-        
+
         if error:
             print_error("received error:", c)
             if msg_id is not None:
