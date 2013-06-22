@@ -3,7 +3,7 @@
 import sys, os, re
 import traceback, platform
 from kivy.core.window import Keyboard
-from kivy.uix.codeinput import CodeInput
+from kivy.uix.textinput import TextInput
 from kivy.properties import StringProperty, ListProperty, DictProperty
 
 from electrum import util
@@ -17,7 +17,7 @@ else:
     MONOSPACE_FONT = 'monospace'
 
 
-class Console(CodeInput):
+class Console(TextInput):
 
     prompt = StringProperty('>> ')
     '''String representing the Prompt message'''

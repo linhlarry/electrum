@@ -317,9 +317,10 @@ class ElectrumMainGui(ElectrumGui):
 
         self.need_update = threading.Event()
         self.wallet.interface.register_callback('updated', lambda: self.need_update.set())
-        self.wallet.interface.register_callback('banner', lambda: lambda: self.console.showMessage(self.wallet.interface.banner))
+        self.wallet.interface.register_callback('banner', lambda: self.console.showMessage(self.wallet.interface.banner))
         self.wallet.interface.register_callback('disconnected', self.update_status)
         self.wallet.interface.register_callback('disconnecting', self.update_status)
+        self.wallet.interface.register_callback('refresh_balance()', self.update_status)
 
         self.expert_mode = app.conf.get('classic_expert_mode', False)
         self.decimal_point = app.conf.get('decimal_point', 8)

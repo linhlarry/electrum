@@ -1,4 +1,4 @@
-from PyQt4.QtCore import SIGNAL
+#from PyQt4.QtCore import SIGNAL
 import decimal
 import httplib
 import json
@@ -14,6 +14,20 @@ class Exchanger(threading.Thread):
         self.lock = threading.Lock()
         # Do price discovery
         self.start()
+
+    def register_callback(self, event, callback):
+        with self.lock:
+            if not self.callbacks.get(event):
+                self.callbacks[event] = []
+            self.callbacks[event].append(callback)
+
+    def trigger_callback(self, event):
+        if not hasattr(self, 'callbacks'):
+            return
+        with self.lock:
+            callbacks = self.callbacks.get(event,[])[:]
+        if callbacks:
+            [callback() for callback in callbacks]
 
     def exchange(self, btc_amount, quote_currency):
         with self.lock:
@@ -46,10 +60,10 @@ class Exchanger(threading.Thread):
                 quote_currencies[r] = self._lookup_rate(response, r)
             with self.lock:
                 self.quote_currencies = quote_currencies
-            self.parent.emit(SIGNAL("refresh_balance()"))
+            self.trigger_callback(("refresh_balance"))
         except KeyError:
             pass
-            
+
     def get_currencies(self):
         return [] if self.quote_currencies == None else sorted(self.quote_currencies.keys())
 

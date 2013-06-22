@@ -252,6 +252,7 @@ class ElectrumWindow(QMainWindow):
         self.wallet.interface.register_callback('banner', lambda: self.emit(QtCore.SIGNAL('banner_signal')))
         self.wallet.interface.register_callback('disconnected', lambda: self.emit(QtCore.SIGNAL('update_status')))
         self.wallet.interface.register_callback('disconnecting', lambda: self.emit(QtCore.SIGNAL('update_status')))
+        self.wallet.interface.register_callback('refresh_balance', lambda: self.emit(QtCore.SIGNAL('refresh_balance()')))
 
         self.expert_mode = config.get('classic_expert_mode', False)
         self.decimal_point = config.get('decimal_point', 8)
